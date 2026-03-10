@@ -1,0 +1,9 @@
+{
+    "name": "Aidelnicek",
+    "short_name": "Aidelnicek",
+    "description": "Zdravé stravování a jídelníčky pro domácnost",
+    "start_url": "/",
+    "display": "standalone",
+    "theme_color": "#2d6a4f",
+    "background_color": "#f8f9fa"
+}

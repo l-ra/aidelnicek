@@ -1,0 +1,37 @@
+<?php
+if (!isset($pageTitle)) {
+    $pageTitle = 'Aidelnicek';
+}
+?>
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= htmlspecialchars($pageTitle) ?> — Aidelnicek</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <div class="container">
+            <a href="/" class="logo">Aidelnicek</a>
+            <nav class="main-nav">
+                <a href="/">Dashboard</a>
+                <a href="/login">Přihlásit</a>
+                <a href="/register">Registrace</a>
+            </nav>
+        </div>
+    </header>
+    <main class="site-main">
+        <div class="container">
+            <?= $content ?? '' ?>
+        </div>
+    </main>
+    <footer class="site-footer">
+        <div class="container">
+            <p>&copy; <?= date('Y') ?> Aidelnicek — Zdravé stravování pro domácnost</p>
+        </div>
+    </footer>
+    <script src="/js/app.js"></script>
+</body>
+</html>

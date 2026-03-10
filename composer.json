@@ -1,0 +1,13 @@
+{
+    "name": "l-ra/aidelnicek",
+    "description": "Webová aplikace pro domácnost - zdravé stravování a jídelníčky",
+    "type": "project",
+    "require": {
+        "php": ">=8.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Aidelnicek\\": "src/"
+        }
+    }
+}

@@ -1,0 +1,9 @@
+.git
+.github
+.env
+*.md
+Dockerfile
+.dockerignore
+helm/
+data/*.sqlite
+vendor
