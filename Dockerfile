@@ -12,13 +12,15 @@ RUN apt-get update && apt-get install -y libsqlite3-dev libcurl4-openssl-dev unz
 COPY --chown=www-data:www-data . /var/www/html/
 WORKDIR /var/www/html
 
+# Allow .htaccess overrides — must run BEFORE the path substitution below,
+# because the substitution renames <Directory /var/www/> and the pattern
+# would no longer match if run afterwards.
+RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+
 # Set document root to public
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
 RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
-
-# Allow .htaccess overrides
-RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
 
 # Data directory for SQLite
 RUN mkdir -p /var/www/html/data && chown www-data:www-data /var/www/html/data
