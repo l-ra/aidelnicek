@@ -19,6 +19,14 @@ class User
         return self::BODY_TYPES;
     }
 
+    public static function isAdmin(int $userId): bool
+    {
+        $stmt = Database::get()->prepare('SELECT is_admin FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        return $row !== false && (bool) $row['is_admin'];
+    }
+
     public static function findById(int $id): ?array
     {
         $db = Database::get();
