@@ -4,7 +4,7 @@ FROM php:8.2-apache
 RUN a2enmod rewrite
 
 # Install SQLite and curl dev libraries; enable pdo_sqlite + curl PHP extensions
-RUN apt-get update && apt-get install -y libsqlite3-dev libcurl4-openssl-dev \
+RUN apt-get update && apt-get install -y libsqlite3-dev libcurl4-openssl-dev unzip \
     && docker-php-ext-install pdo pdo_sqlite curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -26,5 +26,13 @@ RUN mkdir -p /var/www/html/data && chown www-data:www-data /var/www/html/data
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 RUN cd /var/www/html && composer install --no-dev --optimize-autoloader
+
+# Download phpLiteAdmin (overwrites any version committed to the repository)
+RUN mkdir -p /var/www/html/tools \
+    && curl -fsSL "https://bitbucket.org/phpliteadmin/public/downloads/phpLiteAdmin_v1-9-8-2.zip" \
+         -o /tmp/pla.zip \
+    && unzip -p /tmp/pla.zip phpliteadmin.php > /var/www/html/tools/phpliteadmin.php \
+    && rm /tmp/pla.zip \
+    && chown www-data:www-data /var/www/html/tools/phpliteadmin.php
 
 EXPOSE 80

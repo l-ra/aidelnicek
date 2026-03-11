@@ -18,6 +18,11 @@ class Database
         self::$dbPath = $dataDir . '/aidelnicek.sqlite';
     }
 
+    public static function getPath(): string
+    {
+        return self::$dbPath;
+    }
+
     public static function get(): PDO
     {
         if (self::$connection === null) {

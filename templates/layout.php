@@ -22,6 +22,9 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
                 <?php if ($currentUser): ?>
                     <a href="/plan">Jídelníček</a>
                     <a href="/shopping">Nákupní seznam</a>
+                    <?php if (!empty($currentUser['is_admin'])): ?>
+                        <a href="/admin" class="nav-admin">Administrace</a>
+                    <?php endif; ?>
                     <span class="nav-user"><?= htmlspecialchars($currentUser['name']) ?></span>
                     <a href="/profile">Profil</a>
                     <form method="post" action="/logout" class="nav-logout">
