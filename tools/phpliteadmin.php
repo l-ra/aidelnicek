@@ -454,8 +454,10 @@ if (isset($_GET['resource']))
 }
 
 // don't mess with this - required for the login session
-ini_set('session.cookie_httponly', '1');
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+	ini_set('session.cookie_httponly', '1');
+	session_start();
+}
 
 // version-number added so after updating, old session-data is not used anylonger
 // cookies names cannot contain symbols, except underscores
