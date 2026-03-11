@@ -22,6 +22,7 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
                     <span class="nav-user"><?= htmlspecialchars($currentUser['name']) ?></span>
                     <a href="/profile">Profil</a>
                     <form method="post" action="/logout" class="nav-logout">
+                        <?= \Aidelnicek\Csrf::field() ?>
                         <button type="submit" class="btn-link">Odhlásit</button>
                     </form>
                 <?php else: ?>

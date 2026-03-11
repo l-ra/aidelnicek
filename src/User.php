@@ -72,6 +72,22 @@ class User
         ]);
     }
 
+    public static function updatePassword(int $id, string $newPassword): void
+    {
+        $db = Database::get();
+        $hash = password_hash($newPassword, PASSWORD_DEFAULT);
+        $stmt = $db->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+        $stmt->execute([$hash, $id]);
+    }
+
+    public static function verifyCurrentPassword(int $userId, string $password): bool
+    {
+        $stmt = Database::get()->prepare('SELECT password_hash FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        return $row !== false && password_verify($password, $row['password_hash']);
+    }
+
     public static function verifyPassword(string $email, string $password): ?array
     {
         $user = self::findByEmail($email);
@@ -119,6 +135,32 @@ class User
                 $errors['age'] = 'Věk musí být mezi 1 a 150';
             }
         }
+        return $errors;
+    }
+
+    public static function validatePasswordChange(int $userId, array $data): array
+    {
+        $errors = [];
+        $currentPassword = $data['current_password'] ?? '';
+        $newPassword = $data['new_password'] ?? '';
+        $confirmPassword = $data['new_password_confirm'] ?? '';
+
+        if (empty($currentPassword)) {
+            $errors['current_password'] = 'Aktuální heslo je povinné';
+        } elseif (!self::verifyCurrentPassword($userId, $currentPassword)) {
+            $errors['current_password'] = 'Nesprávné aktuální heslo';
+        }
+
+        if (empty($newPassword)) {
+            $errors['new_password'] = 'Nové heslo je povinné';
+        } elseif (strlen($newPassword) < 8) {
+            $errors['new_password'] = 'Nové heslo musí mít alespoň 8 znaků';
+        }
+
+        if ($newPassword !== $confirmPassword) {
+            $errors['new_password_confirm'] = 'Hesla se neshodují';
+        }
+
         return $errors;
     }
 }

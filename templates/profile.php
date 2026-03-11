@@ -9,34 +9,29 @@ $user = Auth::requireLogin();
 $genderOptions = User::getGenderOptions();
 $bodyTypeOptions = User::getBodyTypeOptions();
 
-$errors = [];
-$success = false;
+$success = $success ?? false;
+$passwordSuccess = $passwordSuccess ?? false;
+$errors = $errors ?? [];
+$passwordErrors = $passwordErrors ?? [];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $data = [
-        'name' => trim($_POST['name'] ?? ''),
-        'gender' => $_POST['gender'] ?? null,
-        'age' => $_POST['age'] ?? null,
-        'body_type' => $_POST['body_type'] ?? null,
-        'dietary_notes' => trim($_POST['dietary_notes'] ?? '') ?: null,
-    ];
-    $errors = User::validateProfile($data);
-    if (empty($errors)) {
-        User::update((int) $user['id'], $data);
-        $user = User::findById((int) $user['id']);
-        $success = true;
-    }
-}
+$csrfError = ($_GET['error'] ?? '') === 'csrf';
 
 $pageTitle = 'Profil';
 ob_start();
 ?>
 <section class="profile-form">
     <h1>Můj profil</h1>
+    <?php if ($csrfError): ?>
+        <p class="alert alert-error">Reload stránky a zkuste znovu.</p>
+    <?php endif; ?>
     <?php if ($success): ?>
         <p class="alert alert-success">Profil byl úspěšně uložen.</p>
     <?php endif; ?>
+    <?php if ($passwordSuccess): ?>
+        <p class="alert alert-success">Heslo bylo úspěšně změněno.</p>
+    <?php endif; ?>
     <form method="post" action="/profile">
+        <?= \Aidelnicek\Csrf::field() ?>
         <div class="form-group">
             <label for="name">Jméno</label>
             <input type="text" id="name" name="name" value="<?= htmlspecialchars($user['name'] ?? '') ?>" required>
@@ -83,6 +78,43 @@ ob_start();
             <textarea id="dietary_notes" name="dietary_notes" rows="3" placeholder="např. bezlepková dieta, alergie na ořechy"><?= htmlspecialchars($user['dietary_notes'] ?? '') ?></textarea>
         </div>
         <button type="submit" class="btn btn-primary">Uložit profil</button>
+    </form>
+
+    <h2>Změna hesla</h2>
+    <form method="post" action="/profile-password" class="password-change-form">
+        <?= \Aidelnicek\Csrf::field() ?>
+        <div class="form-group">
+            <label for="current_password">Aktuální heslo</label>
+            <div class="password-toggle">
+                <input type="password" id="current_password" name="current_password">
+                <button type="button" class="password-toggle-btn" aria-label="Zobrazit heslo">👁</button>
+            </div>
+            <?php if (!empty($passwordErrors['current_password'])): ?>
+                <span class="form-error"><?= htmlspecialchars($passwordErrors['current_password']) ?></span>
+            <?php endif; ?>
+        </div>
+        <div class="form-group">
+            <label for="new_password">Nové heslo</label>
+            <div class="password-toggle">
+                <input type="password" id="new_password" name="new_password">
+                <button type="button" class="password-toggle-btn" aria-label="Zobrazit heslo">👁</button>
+            </div>
+            <small class="form-help">Minimálně 8 znaků</small>
+            <?php if (!empty($passwordErrors['new_password'])): ?>
+                <span class="form-error"><?= htmlspecialchars($passwordErrors['new_password']) ?></span>
+            <?php endif; ?>
+        </div>
+        <div class="form-group">
+            <label for="new_password_confirm">Nové heslo znovu</label>
+            <div class="password-toggle">
+                <input type="password" id="new_password_confirm" name="new_password_confirm">
+                <button type="button" class="password-toggle-btn" aria-label="Zobrazit heslo">👁</button>
+            </div>
+            <?php if (!empty($passwordErrors['new_password_confirm'])): ?>
+                <span class="form-error"><?= htmlspecialchars($passwordErrors['new_password_confirm']) ?></span>
+            <?php endif; ?>
+        </div>
+        <button type="submit" class="btn btn-primary">Změnit heslo</button>
     </form>
 </section>
 <?php

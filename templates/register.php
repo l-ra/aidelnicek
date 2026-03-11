@@ -8,11 +8,15 @@ $genderOptions = User::getGenderOptions();
 $bodyTypeOptions = User::getBodyTypeOptions();
 $errors = $errors ?? [];
 $data = $data ?? [];
+$csrfError = ($_GET['error'] ?? '') === 'csrf';
 $pageTitle = 'Registrace';
 ob_start();
 ?>
 <section class="auth-form">
     <h1>Registrace</h1>
+    <?php if ($csrfError): ?>
+        <p class="alert alert-error">Reload stránky a zkuste znovu.</p>
+    <?php endif; ?>
     <?php if (!empty($errors)): ?>
         <ul class="alert alert-error">
             <?php foreach ($errors as $err): ?>
@@ -21,6 +25,7 @@ ob_start();
         </ul>
     <?php endif; ?>
     <form method="post" action="/register">
+        <?= \Aidelnicek\Csrf::field() ?>
         <div class="form-group">
             <label for="name">Jméno</label>
             <input type="text" id="name" name="name" value="<?= htmlspecialchars($data['name'] ?? '') ?>" required>
@@ -31,7 +36,10 @@ ob_start();
         </div>
         <div class="form-group">
             <label for="password">Heslo</label>
-            <input type="password" id="password" name="password" required>
+            <div class="password-toggle">
+                <input type="password" id="password" name="password" required>
+                <button type="button" class="password-toggle-btn" aria-label="Zobrazit heslo">👁</button>
+            </div>
             <small class="form-help">Minimálně 8 znaků</small>
             <?php if (!empty($errors['password'])): ?>
                 <span class="form-error"><?= htmlspecialchars($errors['password']) ?></span>
