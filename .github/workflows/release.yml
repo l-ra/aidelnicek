@@ -119,6 +119,8 @@ jobs:
             --set ingress.enabled=true \
             --set ingress.className=${{ secrets.K8S_INGRESS_CLASS }} \
             --set "ingress.hosts[0].host=${{ secrets.K8S_PRODUCTION_HOST }}" \
+            --set "ingress.hosts[0].paths[0].path=/" \
+            --set "ingress.hosts[0].paths[0].pathType=Prefix" \
             --set "ingress.annotations.cert-manager\.io/cluster-issuer=${{ secrets.K8S_CERT_ISSUER }}" \
             --set "ingress.tls[0].hosts[0]=${{ secrets.K8S_PRODUCTION_HOST }}" \
             --set ingress.tls[0].secretName=aidelnicek-production-tls \
