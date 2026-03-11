@@ -2,6 +2,7 @@
 if (!isset($pageTitle)) {
     $pageTitle = 'Aidelnicek';
 }
+$currentUser = \Aidelnicek\Auth::getCurrentUser();
 ?>
 <!DOCTYPE html>
 <html lang="cs">
@@ -17,8 +18,16 @@ if (!isset($pageTitle)) {
             <a href="/" class="logo">Aidelnicek</a>
             <nav class="main-nav">
                 <a href="/">Dashboard</a>
-                <a href="/login">Přihlásit</a>
-                <a href="/register">Registrace</a>
+                <?php if ($currentUser): ?>
+                    <span class="nav-user"><?= htmlspecialchars($currentUser['name']) ?></span>
+                    <a href="/profile">Profil</a>
+                    <form method="post" action="/logout" class="nav-logout">
+                        <button type="submit" class="btn-link">Odhlásit</button>
+                    </form>
+                <?php else: ?>
+                    <a href="/login">Přihlásit</a>
+                    <a href="/register">Registrace</a>
+                <?php endif; ?>
             </nav>
         </div>
     </header>

@@ -135,10 +135,22 @@ body {
     font-size: 1rem;
 }
 
-.form-group input:focus {
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px rgba(45, 106, 79, 0.25);
+}
+
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: var(--radius);
+    font-size: 1rem;
+    font-family: inherit;
 }
 
 /* Buttons */
@@ -161,6 +173,88 @@ body {
 
 .btn-primary:hover {
     background: var(--color-primary-light);
+}
+
+/* Alerts */
+.alert {
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    margin-bottom: 1rem;
+}
+
+.alert-success {
+    background: #d1e7dd;
+    color: #0f5132;
+    border: 1px solid #badbcc;
+}
+
+.alert-error {
+    background: #f8d7da;
+    color: #842029;
+    border: 1px solid #f5c2c7;
+    list-style: none;
+    padding-left: 1rem;
+}
+
+.alert-error li {
+    margin: 0.25rem 0;
+}
+
+.form-error {
+    display: block;
+    color: #842029;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+.form-help {
+    display: block;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+/* Profile form */
+.profile-form {
+    max-width: 500px;
+}
+
+.profile-form .form-group select,
+.profile-form .form-group textarea {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #dee2e6;
+    border-radius: var(--radius);
+    font-size: 1rem;
+    font-family: inherit;
+}
+
+.profile-form .form-group input:disabled {
+    background: #e9ecef;
+    cursor: not-allowed;
+}
+
+/* Nav */
+.nav-user {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.nav-logout {
+    display: inline;
+}
+
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--color-white);
+    text-decoration: none;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0;
+}
+
+.btn-link:hover {
+    text-decoration: underline;
 }
 
 /* Error page */
