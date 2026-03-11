@@ -137,6 +137,15 @@ class Database
         ];
 
         $db = self::$connection;
+
+        // Bootstrap the tracking table before the loop queries it.
+        // Without this, the very first iteration would SELECT FROM a table that does not exist yet.
+        $db->exec('CREATE TABLE IF NOT EXISTS migrations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )');
+
         foreach ($migrations as $i => $sql) {
             $name = 'migration_' . ($i + 1);
             $stmt = $db->prepare('SELECT 1 FROM migrations WHERE name = ?');
