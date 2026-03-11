@@ -8,6 +8,8 @@ require $projectRoot . '/vendor/autoload.php';
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
+use Aidelnicek\MealHistory;
+use Aidelnicek\MealPlan;
 use Aidelnicek\Router;
 use Aidelnicek\User;
 
@@ -148,6 +150,152 @@ $router->post('/profile-password', $requireCsrf('/profile?error=csrf', function 
 $router->post('/logout', $requireCsrf('/?error=csrf', function () {
     Auth::logout();
     header('Location: /login');
+    exit;
+}));
+
+// ── M3: Jídelníček ────────────────────────────────────────────────────────────
+
+$router->get('/plan', function () {
+    Auth::requireLogin();
+    header('Location: /plan/day');
+    exit;
+});
+
+$router->get('/plan/day', function () use ($projectRoot) {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $week      = MealPlan::getOrCreateCurrentWeek();
+    $weekId    = (int) $week['id'];
+    $todayIso  = (int) date('N'); // 1=Mon … 7=Sun
+
+    $day = isset($_GET['day']) ? (int) $_GET['day'] : $todayIso;
+    $day = max(1, min(7, $day));
+
+    MealPlan::seedDemoWeek($userId, $weekId);
+
+    $dayPlan = MealPlan::getDayPlan($userId, $weekId, $day);
+
+    require $projectRoot . '/templates/day_plan.php';
+});
+
+$router->get('/plan/week', function () use ($projectRoot) {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $currentWeek = MealPlan::getOrCreateCurrentWeek();
+
+    $requestedWeek = isset($_GET['week']) ? (int) $_GET['week'] : null;
+    $requestedYear = isset($_GET['year']) ? (int) $_GET['year'] : null;
+
+    if ($requestedWeek !== null && $requestedYear !== null) {
+        $stmt = \Aidelnicek\Database::get()->prepare(
+            'SELECT * FROM weeks WHERE week_number = ? AND year = ?'
+        );
+        $stmt->execute([$requestedWeek, $requestedYear]);
+        $weekRow = $stmt->fetch();
+        if ($weekRow === false) {
+            // Create week entry for navigation to past/future weeks
+            \Aidelnicek\Database::get()->prepare(
+                'INSERT OR IGNORE INTO weeks (week_number, year) VALUES (?, ?)'
+            )->execute([$requestedWeek, $requestedYear]);
+            $stmt->execute([$requestedWeek, $requestedYear]);
+            $weekRow = $stmt->fetch();
+        }
+        $week = $weekRow;
+    } else {
+        $week = $currentWeek;
+    }
+
+    $weekId = (int) $week['id'];
+    MealPlan::seedDemoWeek($userId, $weekId);
+
+    $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
+    $todayIso = (int) date('N');
+
+    require $projectRoot . '/templates/week_plan.php';
+});
+
+$router->post('/plan/choose', $requireCsrf('/plan/day', function () use ($projectRoot) {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $planId     = isset($_POST['plan_id']) ? (int) $_POST['plan_id'] : 0;
+    $redirectTo = $_POST['redirect_to'] ?? '/plan/day';
+    $isAjax     = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+
+    if ($planId <= 0) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
+            exit;
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    // Fetch meal name before updating so we can record history
+    $stmt = \Aidelnicek\Database::get()->prepare(
+        'SELECT meal_name FROM meal_plans WHERE id = ? AND user_id = ?'
+    );
+    $stmt->execute([$planId, $userId]);
+    $planRow = $stmt->fetch();
+
+    $ok = MealPlan::chooseAlternative($userId, $planId);
+
+    if ($ok && $planRow !== false) {
+        MealHistory::recordChoice($userId, $planRow['meal_name']);
+    }
+
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => $ok]);
+        exit;
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}));
+
+$router->post('/plan/eaten', $requireCsrf('/plan/day', function () use ($projectRoot) {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $planId     = isset($_POST['plan_id']) ? (int) $_POST['plan_id'] : 0;
+    $redirectTo = $_POST['redirect_to'] ?? '/plan/day';
+    $isAjax     = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+
+    if ($planId <= 0) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
+            exit;
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $stmt = \Aidelnicek\Database::get()->prepare(
+        'SELECT meal_name, is_eaten FROM meal_plans WHERE id = ? AND user_id = ?'
+    );
+    $stmt->execute([$planId, $userId]);
+    $planRow = $stmt->fetch();
+
+    $ok = MealPlan::toggleEaten($userId, $planId);
+
+    // Record eaten only when transitioning 0→1
+    if ($ok && $planRow !== false && (int) $planRow['is_eaten'] === 0) {
+        MealHistory::recordEaten($userId, $planRow['meal_name']);
+    }
+
+    if ($isAjax) {
+        $isEaten = MealPlan::isEaten($userId, $planId);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => $ok, 'is_eaten' => $isEaten]);
+        exit;
+    }
+
+    header('Location: ' . $redirectTo);
     exit;
 }));
 

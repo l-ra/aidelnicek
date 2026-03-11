@@ -134,6 +134,11 @@ class Database
                 expires_at DATETIME NOT NULL
             );
             SQL,
+            // M3: unique index on meal_history so ON CONFLICT upserts work
+            <<<'SQL'
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_meal_history_user_meal
+                ON meal_history(user_id, meal_name);
+            SQL,
         ];
 
         $db = self::$connection;

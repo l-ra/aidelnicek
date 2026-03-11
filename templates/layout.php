@@ -11,6 +11,7 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?> — Aidelnicek</title>
     <link rel="stylesheet" href="/css/style.css">
+    <meta name="csrf-token" content="<?= htmlspecialchars(\Aidelnicek\Csrf::generate()) ?>">
 </head>
 <body>
     <header class="site-header">
@@ -19,6 +20,7 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
             <nav class="main-nav">
                 <a href="/">Dashboard</a>
                 <?php if ($currentUser): ?>
+                    <a href="/plan">Jídelníček</a>
                     <span class="nav-user"><?= htmlspecialchars($currentUser['name']) ?></span>
                     <a href="/profile">Profil</a>
                     <form method="post" action="/logout" class="nav-logout">
