@@ -6,10 +6,10 @@ Tento dokument popisuje všechny položky, které je nutné vyplnit v **GitHub S
 
 | Secret | Popis | Použito v |
 |--------|-------|-----------|
-| `KUBE_CONFIG_STAGING` | Kompletní obsah kubeconfig souboru pro připojení ke Kubernetes clusteru pro **staging** prostředí. Získáte příkazem `cat ~/.kube/config` (nebo odpovídající konfigurace pro staging cluster). | Staging |
-| `KUBE_CONFIG_PRODUCTION` | Kompletní obsah kubeconfig souboru pro připojení ke Kubernetes clusteru pro **produkční** prostředí. Získáte příkazem `cat ~/.kube/config` (nebo odpovídající konfigurace pro production cluster). | Production |
-| `K8S_STAGING_NAMESPACE` | Název Kubernetes namespace pro staging prostředí (např. `aidelnicek-staging`). | Staging |
-| `K8S_PRODUCTION_NAMESPACE` | Název Kubernetes namespace pro produkční prostředí (např. `aidelnicek-production`). | Production |
+| `KUBE_CONFIG_STAGING` | Kubeconfig pro připojení ke Kubernetes clusteru pro **staging**. Může být limitovaný token s plnými právy pouze v cílovém namespace – workflow se nesnaží vytvářet namespace. | Staging |
+| `KUBE_CONFIG_PRODUCTION` | Kubeconfig pro připojení ke Kubernetes clusteru pro **produkci**. Může být limitovaný token s plnými právy pouze v cílovém namespace – workflow se nesnaží vytvářet namespace. | Production |
+| `K8S_STAGING_NAMESPACE` | Název Kubernetes namespace pro staging prostředí (např. `aidelnicek-staging`). Namespace musí již existovat – workflow nepoužívá práva na vytváření namespace. | Staging |
+| `K8S_PRODUCTION_NAMESPACE` | Název Kubernetes namespace pro produkční prostředí (např. `aidelnicek-production`). Namespace musí již existovat – workflow nepoužívá práva na vytváření namespace. | Production |
 | `K8S_STAGING_HOST` | Hostname (doména) pro staging prostředí, pod kterou bude aplikace dostupná (např. `staging.aidelnicek.example.com`). | Staging |
 | `K8S_PRODUCTION_HOST` | Hostname (doména) pro produkční prostředí, pod kterou bude aplikace dostupná (např. `aidelnicek.example.com`). | Production |
 | `K8S_INGRESS_CLASS` | Název IngressController třídy v clusteru (např. `nginx`). Musí odpovídat `ingressClassName` vašeho Ingress controlleru. | Staging, Production |

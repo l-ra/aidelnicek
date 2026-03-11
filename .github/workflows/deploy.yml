@@ -74,10 +74,6 @@ jobs:
         with:
           kubeconfig: ${{ secrets.KUBE_CONFIG_STAGING }}
 
-      - name: Create namespace if not exists
-        run: |
-          kubectl create namespace ${{ secrets.K8S_STAGING_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Set up Helm
         uses: azure/setup-helm@v4
         with:
