@@ -37,8 +37,9 @@ $directory   = $projectRoot . '/data/';
 $cookie_name = 'aidelnicek_pla';
 
 // ── Include phpLiteAdmin ──────────────────────────────────────────────────────
-// phpLiteAdmin calls session_start() internally. Because the session is already
-// active (started by Auth::init()), PHP returns false but preserves all session
-// data. phpLiteAdmin's own session keys (prefixed with COOKIENAME) coexist with
-// the application's keys (user_id, last_activity) without collision.
+// phpLiteAdmin guards its session_start() with session_status() === PHP_SESSION_NONE,
+// so it will not attempt to start a new session when one is already active.
+// Both the app and phpLiteAdmin share the same $_SESSION array; phpLiteAdmin's
+// keys (prefixed with COOKIENAME) coexist with the app's keys (user_id,
+// last_activity) without collision.
 include $projectRoot . '/tools/phpliteadmin.php';
