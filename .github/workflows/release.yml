@@ -109,6 +109,17 @@ jobs:
         run: |
           echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
 
+      - name: Create OpenAI LLM secret
+        run: |
+          kubectl create secret generic aidelnicek-llm \
+            --from-literal=OPENAI_AUTH_BEARER="${{ secrets.OPENAI_AUTH_BEARER }}" \
+            --from-literal=OPENAI_MODEL="${{ secrets.OPENAI_MODEL || 'gpt-4o' }}" \
+            --from-literal=OPENAI_BASE_URL="${{ secrets.OPENAI_BASE_URL || 'https://api.openai.com/v1' }}" \
+            --from-literal=LLM_PROVIDER="openai" \
+            --from-literal=AI_REGEN_UI_ENABLED="${{ secrets.AI_REGEN_UI_ENABLED || 'false' }}" \
+            --namespace=${{ secrets.K8S_PRODUCTION_NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy to Production
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"

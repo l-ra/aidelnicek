@@ -1,0 +1,3 @@
+Historická data preferencí uživatele (respektuj je při výběru jídel):
+- Oblíbená jídla — zvolena nebo snězena vícekrát, zahrnuj je nebo jejich variace: {LIKED_MEALS}
+- Méně oblíbená jídla — opakovaně odmítnuta, vyhýbej se jim: {DISLIKED_MEALS}

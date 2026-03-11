@@ -198,15 +198,17 @@ class ShoppingList
 
     /**
      * Aggregates ingredients from meal plan rows into a deduplicated list
-     * ready for bulk INSERT.  Case-insensitive deduplication; repeated
-     * ingredients increment the quantity counter (number of portions).
+     * ready for bulk INSERT.
      *
-     * Designed for forward-compatibility with M5: when the AI generator
-     * produces structured {name, quantity, unit} data, this method can be
-     * extended without changing the public interface.
+     * Handles two ingredient formats:
+     *   - Legacy (demo data): plain string, e.g. "ovesné vločky"
+     *   - AI-generated (M5):  object, e.g. {"name":"ovesné vločky","quantity":80,"unit":"g"}
+     *
+     * Deduplication key: lowercase(name) + "|" + lowercase(unit).
+     * Quantities for identical name+unit pairs are summed.
      *
      * @param  array $mealPlanRows  Rows from meal_plans; each has 'ingredients' (JSON string).
-     * @return array<array{name: string, quantity: float|null, unit: null, category: null}>
+     * @return array<array{name: string, quantity: float|null, unit: string|null, category: null}>
      */
     private static function aggregateIngredients(array $mealPlanRows): array
     {
@@ -224,19 +226,37 @@ class ShoppingList
             }
 
             foreach ($ingredients as $ingredient) {
-                if (!is_string($ingredient) || trim($ingredient) === '') {
+                if (is_string($ingredient)) {
+                    // Legacy format: plain ingredient name
+                    $name     = trim($ingredient);
+                    $quantity = 1.0;
+                    $unit     = null;
+                } elseif (is_array($ingredient) && !empty($ingredient['name'])) {
+                    // AI-generated structured format: {name, quantity, unit}
+                    $name     = trim($ingredient['name']);
+                    $quantity = isset($ingredient['quantity']) ? (float) $ingredient['quantity'] : null;
+                    $unit     = isset($ingredient['unit']) && $ingredient['unit'] !== ''
+                        ? trim($ingredient['unit'])
+                        : null;
+                } else {
                     continue;
                 }
 
-                $key = mb_strtolower(trim($ingredient));
+                if ($name === '') {
+                    continue;
+                }
+
+                $key = mb_strtolower($name) . '|' . mb_strtolower((string) $unit);
 
                 if (isset($aggregated[$key])) {
-                    $aggregated[$key]['quantity'] = ($aggregated[$key]['quantity'] ?? 1) + 1;
+                    if ($quantity !== null) {
+                        $aggregated[$key]['quantity'] = ($aggregated[$key]['quantity'] ?? 0) + $quantity;
+                    }
                 } else {
                     $aggregated[$key] = [
-                        'name'     => trim($ingredient),
-                        'quantity' => 1.0,
-                        'unit'     => null,
+                        'name'     => $name,
+                        'quantity' => $quantity,
+                        'unit'     => $unit,
                         'category' => null,
                     ];
                 }

@@ -42,6 +42,15 @@ ob_start();
     <h1 class="plan-heading">
         <?= htmlspecialchars(MealPlan::getDayLabel($day)) ?>
         <span class="plan-heading__date"><?= $dayDate->format('j. n. Y') ?></span>
+        <?php if (in_array(getenv('AI_REGEN_UI_ENABLED'), ['true', '1', 'yes'], true)): ?>
+            <form method="post" action="/plan/regenerate" class="plan-regen-form">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="week_id" value="<?= $weekId ?>">
+                <button type="submit" class="btn btn-secondary btn-sm plan-regen-btn">
+                    Přegenerovat AI
+                </button>
+            </form>
+        <?php endif; ?>
     </h1>
 
     <div class="meal-cards">
@@ -90,7 +99,19 @@ ob_start();
                             <?php if (!empty($ingredients)): ?>
                                 <ul class="alt-ingredients">
                                     <?php foreach ($ingredients as $ing): ?>
-                                        <li><?= htmlspecialchars($ing) ?></li>
+                                        <?php if (is_array($ing)): ?>
+                                            <li>
+                                                <?= htmlspecialchars($ing['name'] ?? '') ?>
+                                                <?php if (!empty($ing['quantity'])): ?>
+                                                    — <?= htmlspecialchars((string) $ing['quantity']) ?>
+                                                    <?php if (!empty($ing['unit'])): ?>
+                                                        <?= htmlspecialchars($ing['unit']) ?>
+                                                    <?php endif; ?>
+                                                <?php endif; ?>
+                                            </li>
+                                        <?php else: ?>
+                                            <li><?= htmlspecialchars((string) $ing) ?></li>
+                                        <?php endif; ?>
                                     <?php endforeach; ?>
                                 </ul>
                             <?php endif; ?>

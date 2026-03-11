@@ -1098,3 +1098,47 @@ body {
     background: var(--color-primary);
     color: var(--color-white);
 }
+
+/* ── M5: AI regenerace jídelníčku ─────────────────────────────────────────── */
+
+.week-plan__footer {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    margin-top: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.week-plan__regen-form,
+.plan-regen-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.week-plan__regen-btn,
+.plan-regen-btn {
+    white-space: nowrap;
+}
+
+.plan-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.plan-regen-form {
+    margin-left: auto;
+}
+
+@media (max-width: 600px) {
+    .plan-regen-form {
+        margin-left: 0;
+        width: 100%;
+    }
+
+    .plan-regen-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}

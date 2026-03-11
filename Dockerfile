@@ -3,9 +3,9 @@ FROM php:8.2-apache
 # Enable mod_rewrite
 RUN a2enmod rewrite
 
-# Install SQLite dev libraries required for pdo_sqlite extension
-RUN apt-get update && apt-get install -y libsqlite3-dev \
-    && docker-php-ext-install pdo pdo_sqlite \
+# Install SQLite and curl dev libraries; enable pdo_sqlite + curl PHP extensions
+RUN apt-get update && apt-get install -y libsqlite3-dev libcurl4-openssl-dev \
+    && docker-php-ext-install pdo pdo_sqlite curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Copy application
