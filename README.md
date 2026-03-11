@@ -182,7 +182,7 @@ settings
 | Frontend | HTML + CSS (responsivní, mobile-first) + vanilla JS |
 | Web Push | Service Worker + Push API + VAPID (knihovna `web-push-php`) |
 | AI generování | REST API volání na LLM pro tvorbu jídelníčků |
-| Deployment | `php-k8s-app-installer` (výchozí nastavení) |
+| Deployment | Kubernetes (Helm) + GitHub Actions — viz [docs/GITHUB_SECRETS.md](docs/GITHUB_SECRETS.md) |
 
 ---
 

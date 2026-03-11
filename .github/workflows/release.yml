@@ -85,3 +85,46 @@ jobs:
         run: |
           helm chart save helm/aidelnicek ${{ env.REGISTRY }}/${{ github.repository_owner }}/aidelnicek-chart:${{ steps.version.outputs.VERSION }}
           helm chart push ${{ env.REGISTRY }}/${{ github.repository_owner }}/aidelnicek-chart:${{ steps.version.outputs.VERSION }}
+
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: build-and-push-helm
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Create namespace if not exists
+        run: |
+          kubectl create namespace ${{ secrets.K8S_PRODUCTION_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: 'v3.14.0'
+
+      - name: Log in to GHCR for Helm
+        run: |
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
+
+      - name: Deploy to Production
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          helm upgrade --install aidelnicek oci://${{ env.REGISTRY }}/${{ github.repository_owner }}/aidelnicek-chart \
+            --version $VERSION \
+            --namespace ${{ secrets.K8S_PRODUCTION_NAMESPACE }} \
+            --set image.repository=${{ env.REGISTRY }}/${{ github.repository }} \
+            --set image.tag=$VERSION \
+            --set ingress.enabled=true \
+            --set ingress.className=${{ secrets.K8S_INGRESS_CLASS }} \
+            --set "ingress.hosts[0].host=${{ secrets.K8S_PRODUCTION_HOST }}" \
+            --set "ingress.annotations.cert-manager\.io/cluster-issuer=${{ secrets.K8S_CERT_ISSUER }}" \
+            --set "ingress.tls[0].hosts[0]=${{ secrets.K8S_PRODUCTION_HOST }}" \
+            --set ingress.tls[0].secretName=aidelnicek-production-tls \
+            --set persistence.storageClass=${{ secrets.K8S_STORAGE_CLASS }} \
+            --wait
