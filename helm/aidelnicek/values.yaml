@@ -15,7 +15,8 @@ serviceAccount:
 
 podAnnotations: {}
 
-podSecurityContext: {}
+podSecurityContext:
+  fsGroup: 33  # www-data group - ensures SQLite can write to /var/www/html/data
 
 securityContext: {}
 
