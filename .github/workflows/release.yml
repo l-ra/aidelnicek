@@ -97,7 +97,7 @@ jobs:
       - name: Configure kubectl
         uses: azure/k8s-set-context@v4
         with:
-          kubeconfig: ${{ secrets.KUBE_CONFIG }}
+          kubeconfig: ${{ secrets.KUBE_CONFIG_PRODUCTION }}
 
       - name: Create namespace if not exists
         run: |

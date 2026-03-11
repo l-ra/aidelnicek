@@ -6,7 +6,8 @@ Tento dokument popisuje všechny položky, které je nutné vyplnit v **GitHub S
 
 | Secret | Popis | Použito v |
 |--------|-------|-----------|
-| `KUBE_CONFIG` | Kompletní obsah kubeconfig souboru pro připojení ke Kubernetes clusteru. Získáte příkazem `cat ~/.kube/config` (nebo odpovídající konfigurace pro váš cluster). | Staging, Production |
+| `KUBE_CONFIG_STAGING` | Kompletní obsah kubeconfig souboru pro připojení ke Kubernetes clusteru pro **staging** prostředí. Získáte příkazem `cat ~/.kube/config` (nebo odpovídající konfigurace pro staging cluster). | Staging |
+| `KUBE_CONFIG_PRODUCTION` | Kompletní obsah kubeconfig souboru pro připojení ke Kubernetes clusteru pro **produkční** prostředí. Získáte příkazem `cat ~/.kube/config` (nebo odpovídající konfigurace pro production cluster). | Production |
 | `K8S_STAGING_NAMESPACE` | Název Kubernetes namespace pro staging prostředí (např. `aidelnicek-staging`). | Staging |
 | `K8S_PRODUCTION_NAMESPACE` | Název Kubernetes namespace pro produkční prostředí (např. `aidelnicek-production`). | Production |
 | `K8S_STAGING_HOST` | Hostname (doména) pro staging prostředí, pod kterou bude aplikace dostupná (např. `staging.aidelnicek.example.com`). | Staging |
@@ -21,7 +22,7 @@ Tento dokument popisuje všechny položky, které je nutné vyplnit v **GitHub S
 2. Přejděte do **Settings** → **Secrets and variables** → **Actions**.
 3. Klikněte na **New repository secret**.
 4. Zadejte **Name** (přesně podle tabulky výše) a **Value** (hodnotu secretu).
-5. Pro `KUBE_CONFIG` zkopírujte celý výstup z `cat ~/.kube/config` včetně všech řádků.
+5. Pro `KUBE_CONFIG_STAGING` a `KUBE_CONFIG_PRODUCTION` zkopírujte celý výstup z `cat ~/.kube/config` včetně všech řádků (každé prostředí může mít jiný cluster a tedy jiný kubeconfig).
 
 ## Doporučení pro prostředí (Environments)
 
