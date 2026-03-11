@@ -1,0 +1,19 @@
+Vytvoř týdenní jídelníček (7 dní, pondělí až neděle) pro uživatele s těmito parametry:
+
+Profil uživatele:
+- Jméno: {USER_NAME}
+- Pohlaví: {GENDER}
+- Věk: {AGE} let
+- Typ postavy: {BODY_TYPE}
+- Stravovací omezení / preference: {DIETARY_NOTES}
+- Generuji pro: týden {WEEK_NUMBER}/{YEAR}
+{HISTORY_BLOCK}
+Pravidla pro sestavení jídelníčku:
+- 5 chodů denně: snídaně (breakfast), dopolední svačina (snack_am), oběd (lunch), odpolední svačina (snack_pm), večeře (dinner)
+- Každý chod má dvě alternativy (alt1, alt2) — musí se navzájem lišit
+- Ingredience uváděj jako pole objektů s klíči "name" (string), "quantity" (číslo), "unit" (string, např. "g", "ml", "ks", "lžíce", "hrst")
+- Jídla musí být realistická, vařitelná z běžně dostupných surovin v ČR
+- Popis (description) má být krátký — 1 věta popisující chuť nebo způsob přípravy
+
+Vrať přesně tento JSON (bez markdown, bez komentářů, bez textu před nebo za):
+{JSON_SCHEMA}

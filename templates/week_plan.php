@@ -1,4 +1,5 @@
 <?php
+use Aidelnicek\Csrf;
 use Aidelnicek\MealPlan;
 
 $pageTitle = 'Týdenní jídelníček';
@@ -105,6 +106,15 @@ ob_start();
 
     <div class="week-plan__footer">
         <a href="/plan/day" class="btn btn-primary">Dnešní plán</a>
+        <?php if (in_array(getenv('AI_REGEN_UI_ENABLED'), ['true', '1', 'yes'], true)): ?>
+            <form method="post" action="/plan/regenerate" class="week-plan__regen-form">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="week_id" value="<?= $weekId ?>">
+                <button type="submit" class="btn btn-secondary week-plan__regen-btn">
+                    Přegenerovat AI
+                </button>
+            </form>
+        <?php endif; ?>
     </div>
 
 </section>

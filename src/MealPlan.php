@@ -211,6 +211,27 @@ class MealPlan
         return self::DAY_SHORT_LABELS[$day] ?? (string) $day;
     }
 
+    public static function getOrCreateNextWeek(): array
+    {
+        $dt         = (new \DateTimeImmutable())->modify('+1 week');
+        $weekNumber = (int) $dt->format('W');
+        $year       = (int) $dt->format('o'); // ISO year — správně ošetřuje přechod roku
+
+        $db   = Database::get();
+        $stmt = $db->prepare('SELECT * FROM weeks WHERE week_number = ? AND year = ?');
+        $stmt->execute([$weekNumber, $year]);
+        $row = $stmt->fetch();
+
+        if ($row !== false) {
+            return $row;
+        }
+
+        $db->prepare('INSERT INTO weeks (week_number, year) VALUES (?, ?)')->execute([$weekNumber, $year]);
+        $id = (int) $db->lastInsertId();
+
+        return ['id' => $id, 'week_number' => $weekNumber, 'year' => $year, 'generated_at' => null];
+    }
+
     public static function getOrCreateCurrentWeek(): array
     {
         $weekNumber = (int) date('W');

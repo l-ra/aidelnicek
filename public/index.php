@@ -8,6 +8,7 @@ require $projectRoot . '/vendor/autoload.php';
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
+use Aidelnicek\MealGenerator;
 use Aidelnicek\MealHistory;
 use Aidelnicek\MealPlan;
 use Aidelnicek\Router;
@@ -297,6 +298,32 @@ $router->post('/plan/eaten', $requireCsrf('/plan/day', function () use ($project
     }
 
     header('Location: ' . $redirectTo);
+    exit;
+}));
+
+// ── M5: Přegenerování jídelníčku (podmíněno AI_REGEN_UI_ENABLED) ─────────────
+
+$router->post('/plan/regenerate', $requireCsrf('/plan/week', function () {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $enabled = getenv('AI_REGEN_UI_ENABLED');
+    if (!in_array($enabled, ['true', '1', 'yes'], true)) {
+        header('Location: /plan/week');
+        exit;
+    }
+
+    $weekId  = isset($_POST['week_id']) ? (int) $_POST['week_id'] : 0;
+    $week    = $weekId > 0 ? MealPlan::getWeekById($weekId) : null;
+
+    if ($week === null) {
+        $week   = MealPlan::getOrCreateCurrentWeek();
+        $weekId = (int) $week['id'];
+    }
+
+    MealGenerator::generateWeek($userId, (int) $week['id'], true);
+
+    header('Location: /plan/week?week=' . (int) $week['week_number'] . '&year=' . (int) $week['year']);
     exit;
 }));
 

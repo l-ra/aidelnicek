@@ -33,6 +33,26 @@ Pro lepší správu oprávnění doporučujeme vytvořit v GitHubu **Environment
 3. U production můžete zapnout **Required reviewers** pro schválení před nasazením
 4. Secrets lze definovat na úrovni environment – pak budou dostupné pouze pro dané prostředí
 
+## M5 — OpenAI LLM integrace
+
+Secrets pro AI generátor jídelníčků. Jsou předávány do Kubernetes přes
+`kubectl create secret generic aidelnicek-llm` (viz `.github/workflows/deploy.yml`
+a `release.yml`) a namontovány do podu jako env proměnné přes `envFrom.secretRef`.
+
+| Secret                | Povinný   | Popis                                                                            |
+|-----------------------|-----------|----------------------------------------------------------------------------------|
+| `OPENAI_AUTH_BEARER`  | **Ano**   | Bearer token pro OpenAI API. Může být:<br>• **API klíč** — z [platform.openai.com/api-keys](https://platform.openai.com/api-keys) (začíná `sk-...`)<br>• **OAuth access token** — vydaný poskytovatelem identity při enterprise/SSO přihlášení<br>Kód obě varianty posílá identicky jako `Authorization: Bearer <hodnota>`. |
+| `OPENAI_MODEL`        | Ne        | Název modelu (výchozí: `gpt-4o`). Příklady: `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`  |
+| `OPENAI_BASE_URL`     | Ne        | Vlastní endpoint (výchozí: `https://api.openai.com/v1`). Použijte pro Azure OpenAI nebo proxy. |
+| `LLM_PROVIDER`        | Ne        | Provider (výchozí: `openai`). Rezerva pro budoucí přidání dalších providerů.     |
+| `AI_REGEN_UI_ENABLED` | Ne        | `true` = zobrazí tlačítko **Přegenerovat AI** v UI jídelníčku (výchozí: skryto). Lze nastavit odlišně pro staging a production. |
+
+**Doporučení pro prostředí:**
+- Pro staging nastavte `AI_REGEN_UI_ENABLED=true` a levnější model (`gpt-4o-mini`)
+- Pro production nechte `AI_REGEN_UI_ENABLED` prázdné (skrytý button) nebo `true` dle potřeby
+
+---
+
 ## Triggering nasazení
 
 - **Staging**: Automaticky při push do větve `main` (workflow `deploy.yml`)
