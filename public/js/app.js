@@ -23,6 +23,11 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── M3: Jídelníček interakce ──────────────────────────────────────────────
     initAlternativePicker();
     initEatenCheckboxes();
+
+    // ── M4: Nákupní seznam interakce ──────────────────────────────────────────
+    initShoppingToggle();
+    initShoppingRemove();
+    initShoppingFilter();
 });
 
 /**
@@ -190,5 +195,148 @@ function attachEatenHandler(cb) {
                 cbEl.checked = !cbEl.checked;
                 showNetworkError();
             });
+    });
+}
+
+// ── M4: Shopping list ────────────────────────────────────────────────────────
+
+/**
+ * Recalculates and updates the progress bar, progress label and filter tab
+ * counters based on the current DOM state of .shopping-item elements.
+ */
+function updateShoppingProgress() {
+    var container = document.getElementById('shopping-items-container');
+    if (!container) { return; }
+
+    var allItems       = container.querySelectorAll('.shopping-item');
+    var purchasedItems = container.querySelectorAll('.shopping-item.is-purchased');
+    var total          = allItems.length;
+    var bought         = purchasedItems.length;
+    var remaining      = total - bought;
+    var percent        = total > 0 ? Math.round(bought / total * 100) : 0;
+
+    var fill  = document.getElementById('shopping-progress-fill');
+    var label = document.getElementById('shopping-progress-label');
+    if (fill)  { fill.style.width = percent + '%'; }
+    if (label) { label.textContent = bought + ' / ' + total + ' nakoupeno'; }
+
+    var countAll       = document.getElementById('count-all');
+    var countRemaining = document.getElementById('count-remaining');
+    var countPurchased = document.getElementById('count-purchased');
+    if (countAll)       { countAll.textContent       = total; }
+    if (countRemaining) { countRemaining.textContent = remaining; }
+    if (countPurchased) { countPurchased.textContent = bought; }
+}
+
+/**
+ * Handles clicks on the circular check buttons next to each shopping item.
+ * Sends a POST to /shopping/toggle and toggles the is-purchased class.
+ */
+function initShoppingToggle() {
+    var container = document.getElementById('shopping-items-container');
+    if (!container) { return; }
+
+    container.addEventListener('click', function (e) {
+        var btn = e.target.closest('.shopping-item__check');
+        if (!btn) { return; }
+
+        var itemId = btn.getAttribute('data-item-id');
+        var li     = btn.closest('.shopping-item');
+        if (!itemId || !li) { return; }
+
+        postAjax('/shopping/toggle', { item_id: itemId, redirect_to: '/shopping' })
+            .then(function (json) {
+                if (!json.ok) { showNetworkError(); return; }
+
+                var isPurchased = json.is_purchased === true || json.is_purchased === 1;
+                li.classList.toggle('is-purchased', isPurchased);
+                btn.setAttribute('aria-pressed', isPurchased ? 'true' : 'false');
+                btn.setAttribute('aria-label', isPurchased ? 'Odznačit' : 'Označit jako nakoupeno');
+
+                updateShoppingProgress();
+                applyCurrentFilter();
+            })
+            .catch(function () { showNetworkError(); });
+    });
+}
+
+/**
+ * Handles clicks on the × remove buttons.
+ * Sends a POST to /shopping/remove and removes the list item from the DOM.
+ */
+function initShoppingRemove() {
+    var container = document.getElementById('shopping-items-container');
+    if (!container) { return; }
+
+    container.addEventListener('click', function (e) {
+        var btn = e.target.closest('.shopping-item__remove');
+        if (!btn) { return; }
+
+        var itemId = btn.getAttribute('data-item-id');
+        var li     = btn.closest('.shopping-item');
+        if (!itemId || !li) { return; }
+
+        postAjax('/shopping/remove', { item_id: itemId, redirect_to: '/shopping' })
+            .then(function (json) {
+                if (!json.ok) { showNetworkError(); return; }
+
+                var group = li.closest('.shopping-category-group');
+                li.remove();
+
+                // Remove empty category group
+                if (group && group.querySelector('.shopping-item') === null) {
+                    group.remove();
+                }
+
+                updateShoppingProgress();
+            })
+            .catch(function () { showNetworkError(); });
+    });
+}
+
+/**
+ * Handles filter tab clicks (Vše / Zbývá / Nakoupeno).
+ * Shows/hides .shopping-item elements by toggling a hidden class.
+ */
+function initShoppingFilter() {
+    var tabContainer = document.querySelector('.shopping-filter');
+    if (!tabContainer) { return; }
+
+    tabContainer.addEventListener('click', function (e) {
+        var tab = e.target.closest('.shopping-filter__tab');
+        if (!tab) { return; }
+
+        tabContainer.querySelectorAll('.shopping-filter__tab').forEach(function (t) {
+            t.classList.remove('is-active');
+            t.setAttribute('aria-selected', 'false');
+        });
+        tab.classList.add('is-active');
+        tab.setAttribute('aria-selected', 'true');
+
+        applyCurrentFilter();
+    });
+}
+
+/**
+ * Applies the currently active filter to all .shopping-item elements.
+ * Called after toggle and remove actions as well.
+ */
+function applyCurrentFilter() {
+    var activeTab = document.querySelector('.shopping-filter__tab.is-active');
+    var filter    = activeTab ? activeTab.getAttribute('data-filter') : 'all';
+    var container = document.getElementById('shopping-items-container');
+    if (!container) { return; }
+
+    container.querySelectorAll('.shopping-item').forEach(function (li) {
+        var isPurchased = li.classList.contains('is-purchased');
+        var visible;
+        if (filter === 'remaining') {
+            visible = !isPurchased;
+        } else if (filter === 'purchased') {
+            visible = isPurchased;
+        } else {
+            visible = true;
+        }
+        li.style.display = visible ? '' : 'none';
     });
 }

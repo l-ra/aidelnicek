@@ -1,6 +1,7 @@
 <?php
 use Aidelnicek\Auth;
 use Aidelnicek\MealPlan;
+use Aidelnicek\ShoppingList;
 
 $pageTitle  = 'Dashboard';
 $user       = Auth::getCurrentUser();
@@ -68,6 +69,24 @@ ob_start();
     <div class="dashboard-actions">
         <a href="/plan/day" class="btn btn-primary">Dnešní plán</a>
         <a href="/plan/week" class="btn btn-secondary">Týdenní přehled</a>
+    </div>
+
+    <?php
+    $shoppingRemaining = ShoppingList::getItems($weekId, false);
+    $remainingCount    = count($shoppingRemaining);
+    ?>
+    <div class="dashboard-shopping">
+        <div class="dashboard-shopping__header">
+            <h2>&#x1F6D2; Nákupní seznam</h2>
+            <a href="/shopping" class="btn btn-secondary btn-sm">Otevřít seznam →</a>
+        </div>
+        <p class="dashboard-shopping__count">
+            <?php if ($remainingCount > 0): ?>
+                <strong><?= $remainingCount ?></strong> <?= $remainingCount === 1 ? 'položka zbývá' : ($remainingCount <= 4 ? 'položky zbývají' : 'položek zbývá') ?> nakoupit
+            <?php else: ?>
+                Zatím žádné položky.
+            <?php endif; ?>
+        </p>
     </div>
 </section>
 <?php

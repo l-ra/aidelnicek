@@ -27,6 +27,11 @@ class Csrf
         return hash_equals($stored, $token);
     }
 
+    public static function generate(): string
+    {
+        return self::getToken();
+    }
+
     public static function field(): string
     {
         return '<input type="hidden" name="csrf_token" value="' . htmlspecialchars(self::getToken()) . '">';

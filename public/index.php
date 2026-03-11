@@ -11,6 +11,7 @@ use Aidelnicek\Database;
 use Aidelnicek\MealHistory;
 use Aidelnicek\MealPlan;
 use Aidelnicek\Router;
+use Aidelnicek\ShoppingList;
 use Aidelnicek\User;
 
 Database::init($projectRoot);
@@ -296,6 +297,154 @@ $router->post('/plan/eaten', $requireCsrf('/plan/day', function () use ($project
     }
 
     header('Location: ' . $redirectTo);
+    exit;
+}));
+
+// ── M4: Nákupní seznam ────────────────────────────────────────────────────────
+
+$router->get('/shopping', function () use ($projectRoot) {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $week   = MealPlan::getOrCreateCurrentWeek();
+    $weekId = (int) $week['id'];
+
+    // Ensure demo meals exist so the generator has data to work with
+    MealPlan::seedDemoWeek($userId, $weekId);
+
+    // Auto-generate shopping list if no auto-generated items exist yet
+    ShoppingList::generateFromMealPlans($weekId);
+
+    require $projectRoot . '/templates/shopping_list.php';
+});
+
+$router->post('/shopping/toggle', $requireCsrf('/shopping', function () {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $itemId     = isset($_POST['item_id']) ? (int) $_POST['item_id'] : 0;
+    $redirectTo = $_POST['redirect_to'] ?? '/shopping';
+    $isAjax     = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+
+    if ($itemId <= 0) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'invalid item_id']);
+            exit;
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $ok = ShoppingList::togglePurchased($userId, $itemId);
+
+    if ($isAjax) {
+        $stmt = Database::get()->prepare(
+            'SELECT is_purchased FROM shopping_list_items WHERE id = ?'
+        );
+        $stmt->execute([$itemId]);
+        $row         = $stmt->fetch();
+        $isPurchased = $row !== false ? (bool) $row['is_purchased'] : false;
+
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => $ok, 'is_purchased' => $isPurchased]);
+        exit;
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}));
+
+$router->post('/shopping/add', $requireCsrf('/shopping', function () {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $week   = MealPlan::getOrCreateCurrentWeek();
+    $weekId = (int) $week['id'];
+
+    $name     = trim($_POST['name'] ?? '');
+    $quantity = (isset($_POST['quantity']) && $_POST['quantity'] !== '')
+        ? (float) $_POST['quantity']
+        : null;
+    $unit     = trim($_POST['unit'] ?? '') ?: null;
+    $category = trim($_POST['category'] ?? '') ?: null;
+    $isAjax   = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+
+    if ($name === '') {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'Název je povinný']);
+            exit;
+        }
+        header('Location: /shopping?error=name');
+        exit;
+    }
+
+    $id = ShoppingList::addItem($userId, $weekId, $name, $quantity, $unit, $category);
+
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => true, 'id' => $id]);
+        exit;
+    }
+
+    header('Location: /shopping');
+    exit;
+}));
+
+$router->post('/shopping/remove', $requireCsrf('/shopping', function () {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $itemId     = isset($_POST['item_id']) ? (int) $_POST['item_id'] : 0;
+    $redirectTo = $_POST['redirect_to'] ?? '/shopping';
+    $isAjax     = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+
+    if ($itemId <= 0) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'invalid item_id']);
+            exit;
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $ok = ShoppingList::removeItem($userId, $itemId);
+
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => $ok]);
+        exit;
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}));
+
+$router->post('/shopping/clear', $requireCsrf('/shopping', function () {
+    Auth::requireLogin();
+
+    $week   = MealPlan::getOrCreateCurrentWeek();
+    $weekId = (int) $week['id'];
+
+    ShoppingList::clearPurchased($weekId);
+
+    header('Location: /shopping');
+    exit;
+}));
+
+$router->post('/shopping/regenerate', $requireCsrf('/shopping', function () {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $week   = MealPlan::getOrCreateCurrentWeek();
+    $weekId = (int) $week['id'];
+
+    MealPlan::seedDemoWeek($userId, $weekId);
+    ShoppingList::generateFromMealPlans($weekId, true);
+
+    header('Location: /shopping');
     exit;
 }));
 
