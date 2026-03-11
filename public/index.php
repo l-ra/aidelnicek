@@ -155,6 +155,17 @@ $router->post('/logout', $requireCsrf('/?error=csrf', function () {
     exit;
 }));
 
+// ── Admin sekce ───────────────────────────────────────────────────────────────
+
+$router->get('/admin', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+    require $projectRoot . '/templates/admin.php';
+});
+
 // ── M3: Jídelníček ────────────────────────────────────────────────────────────
 
 $router->get('/plan', function () {
