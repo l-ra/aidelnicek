@@ -74,9 +74,7 @@ class Auth
 
     public static function login(int $userId, bool $rememberMe = false): void
     {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
+        self::init();
         $_SESSION[self::SESSION_USER_ID] = $userId;
         $_SESSION[self::SESSION_LAST_ACTIVITY] = time();
 
@@ -103,10 +101,8 @@ class Auth
 
     public static function logout(): void
     {
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
-        $userId = $_SESSION[self::SESSION_USER_ID] ?? null;
+        self::init();
+        $userId = self::getUserId();
         if ($userId !== null) {
             $db = Database::get();
             $stmt = $db->prepare('DELETE FROM remember_tokens WHERE user_id = ?');
