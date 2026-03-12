@@ -110,11 +110,14 @@ $router->get('/profile', function () use ($projectRoot) {
 $router->post('/profile', $requireCsrf('/profile?error=csrf', function () use ($projectRoot) {
     $user = Auth::requireLogin();
     $data = [
-        'name' => trim($_POST['name'] ?? ''),
-        'gender' => $_POST['gender'] ?? null,
-        'age' => $_POST['age'] ?? null,
-        'body_type' => $_POST['body_type'] ?? null,
+        'name'          => trim($_POST['name'] ?? ''),
+        'gender'        => $_POST['gender'] ?? null,
+        'age'           => $_POST['age'] ?? null,
+        'body_type'     => $_POST['body_type'] ?? null,
         'dietary_notes' => trim($_POST['dietary_notes'] ?? '') ?: null,
+        'height'        => $_POST['height'] ?? null,
+        'weight'        => $_POST['weight'] ?? null,
+        'diet_goal'     => trim($_POST['diet_goal'] ?? '') ?: null,
     ];
     $errors = User::validateProfile($data);
     if (empty($errors)) {
@@ -164,6 +167,139 @@ $router->get('/admin', function () use ($projectRoot) {
         exit;
     }
     require $projectRoot . '/templates/admin.php';
+});
+
+$router->get('/admin/table', function () use ($projectRoot) {
+    require $projectRoot . '/templates/admin_table.php';
+});
+
+$router->post('/admin/table/delete', $requireCsrf('/admin/table', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+
+    $db        = Database::get();
+    $tableList = $db->query(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    $table = $_POST['table'] ?? '';
+    $rowid = isset($_POST['rowid']) ? (int) $_POST['rowid'] : 0;
+    $page  = isset($_POST['page'])  ? (int) $_POST['page']  : 1;
+
+    if ($table === '' || !in_array($table, $tableList, true) || $rowid <= 0) {
+        header('Location: /admin/table?table=' . urlencode($table) . '&error=invalid');
+        exit;
+    }
+
+    $qt = '"' . str_replace('"', '""', $table) . '"';
+    $db->prepare("DELETE FROM {$qt} WHERE rowid = ?")->execute([$rowid]);
+
+    header('Location: /admin/table?table=' . urlencode($table) . '&page=' . $page . '&success=deleted');
+    exit;
+}));
+
+$router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+
+    $db        = Database::get();
+    $tableList = $db->query(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    $table = $_POST['table'] ?? '';
+    $rowid = isset($_POST['rowid']) ? (int) $_POST['rowid'] : 0;
+    $page  = isset($_POST['page'])  ? (int) $_POST['page']  : 1;
+
+    if ($table === '' || !in_array($table, $tableList, true) || $rowid <= 0) {
+        header('Location: /admin/table?table=' . urlencode($table) . '&error=invalid');
+        exit;
+    }
+
+    $qt = '"' . str_replace('"', '""', $table) . '"';
+
+    // Načtení platných sloupců z PRAGMA — whitelist pro SET klauzuli
+    $validColumns = [];
+    foreach ($db->query("PRAGMA table_info({$qt})") as $col) {
+        $validColumns[] = $col['name'];
+    }
+
+    $setClauses = [];
+    $values     = [];
+    foreach ($_POST as $key => $value) {
+        if (!str_starts_with($key, 'field_')) {
+            continue;
+        }
+        $colName = substr($key, 6);
+        if (!in_array($colName, $validColumns, true)) {
+            continue;
+        }
+        $qc = '"' . str_replace('"', '""', $colName) . '"';
+        $setClauses[] = "{$qc} = ?";
+        $values[]     = $value === '' ? null : $value;
+    }
+
+    if (!empty($setClauses)) {
+        $values[] = $rowid;
+        $sql = "UPDATE {$qt} SET " . implode(', ', $setClauses) . " WHERE rowid = ?";
+        $db->prepare($sql)->execute($values);
+    }
+
+    header('Location: /admin/table?table=' . urlencode($table) . '&page=' . $page . '&success=updated');
+    exit;
+}));
+
+$router->get('/admin/sql', function () use ($projectRoot) {
+    require $projectRoot . '/templates/admin_sql.php';
+});
+
+$router->post('/admin/sql', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Přístup odepřen.']);
+        exit;
+    }
+
+    $token = $_POST['csrf_token'] ?? '';
+    if (!Csrf::validate($token)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Neplatný CSRF token.']);
+        exit;
+    }
+
+    $sql = trim($_POST['sql'] ?? '');
+    if ($sql === '') {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Prázdný příkaz.']);
+        exit;
+    }
+
+    header('Content-Type: application/json');
+    try {
+        $db   = Database::get();
+        $stmt = $db->query($sql);
+
+        if ($stmt === false) {
+            echo json_encode(['ok' => false, 'error' => 'Příkaz selhal.']);
+            exit;
+        }
+
+        $rows     = $stmt->fetchAll();
+        $affected = $stmt->rowCount();
+        echo json_encode(['ok' => true, 'rows' => $rows, 'affected' => $affected], JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
 });
 
 // ── M3: Jídelníček ────────────────────────────────────────────────────────────

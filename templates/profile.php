@@ -73,9 +73,30 @@ ob_start();
                 <?php endforeach; ?>
             </select>
         </div>
+        <div class="form-group form-row">
+            <div>
+                <label for="height">Výška (cm)</label>
+                <input type="number" id="height" name="height" min="50" max="250" value="<?= htmlspecialchars((string) ($user['height'] ?? '')) ?>" placeholder="např. 175">
+                <?php if (!empty($errors['height'])): ?>
+                    <span class="form-error"><?= htmlspecialchars($errors['height']) ?></span>
+                <?php endif; ?>
+            </div>
+            <div>
+                <label for="weight">Váha (kg)</label>
+                <input type="number" id="weight" name="weight" min="20" max="500" step="0.1" value="<?= htmlspecialchars((string) ($user['weight'] ?? '')) ?>" placeholder="např. 70">
+                <?php if (!empty($errors['weight'])): ?>
+                    <span class="form-error"><?= htmlspecialchars($errors['weight']) ?></span>
+                <?php endif; ?>
+            </div>
+        </div>
         <div class="form-group">
             <label for="dietary_notes">Dietní omezení / alergie</label>
             <textarea id="dietary_notes" name="dietary_notes" rows="3" placeholder="např. bezlepková dieta, alergie na ořechy"><?= htmlspecialchars($user['dietary_notes'] ?? '') ?></textarea>
+        </div>
+        <div class="form-group">
+            <label for="diet_goal">Cíl jídelníčku</label>
+            <textarea id="diet_goal" name="diet_goal" rows="3" placeholder="např. zhubnout 5 kg za 3 měsíce, udržet váhu, nabrat svalovou hmotu"><?= htmlspecialchars($user['diet_goal'] ?? '') ?></textarea>
+            <small class="form-help">Slovní popis vašeho cíle — LLM ho použije při generování jídelníčku.</small>
         </div>
         <button type="submit" class="btn btn-primary">Uložit profil</button>
     </form>

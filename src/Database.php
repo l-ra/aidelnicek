@@ -144,6 +144,16 @@ class Database
             CREATE UNIQUE INDEX IF NOT EXISTS idx_meal_history_user_meal
                 ON meal_history(user_id, meal_name);
             SQL,
+            // M6: výška, váha, cíl jídelníčku na profilu uživatele
+            <<<'SQL'
+            ALTER TABLE users ADD COLUMN height INTEGER;
+            SQL,
+            <<<'SQL'
+            ALTER TABLE users ADD COLUMN weight REAL;
+            SQL,
+            <<<'SQL'
+            ALTER TABLE users ADD COLUMN diet_goal TEXT;
+            SQL,
         ];
 
         $db = self::$connection;
