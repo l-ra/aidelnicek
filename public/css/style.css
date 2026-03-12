@@ -1147,7 +1147,7 @@ body {
 
 .nav-admin {
     font-weight: 600;
-    color: var(--color-primary) !important;
+    color: var(--color-white) !important;
 }
 
 .admin-dashboard h1 {
