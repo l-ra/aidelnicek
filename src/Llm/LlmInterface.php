@@ -11,7 +11,7 @@ interface LlmInterface
      *
      * @param string $systemPrompt  Systémový kontext (role/instrukce modelu)
      * @param string $userPrompt    Uživatelský prompt (konkrétní zadání)
-     * @param array  $options       Volitelné: 'temperature' (float), 'max_tokens' (int),
+     * @param array  $options       Volitelné: 'temperature' (float), 'max_completion_tokens' (int),
      *                              'user_id' (int) — pro logování
      * @return string               Textová odpověď modelu
      * @throws \RuntimeException    Při HTTP chybě, timeoutu nebo neplatném tokenu
