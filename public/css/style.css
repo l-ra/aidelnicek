@@ -1539,3 +1539,204 @@ body {
     background: var(--color-bg, #f8f9fa);
     border-color: var(--color-border, #dee2e6);
 }
+
+/* ── LLM test ──────────────────────────────────────────────────────────────── */
+
+.llm-test-page {
+    max-width: 1100px;
+}
+
+.llm-test-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.llm-textarea {
+    width: 100%;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: var(--radius);
+    resize: vertical;
+    line-height: 1.5;
+    color: var(--color-text);
+    background: var(--color-white);
+    transition: border-color 0.15s;
+}
+
+.llm-textarea:focus {
+    outline: none;
+    border-color: var(--color-primary-light);
+    box-shadow: 0 0 0 3px rgba(64, 145, 108, 0.15);
+}
+
+.llm-textarea--system {
+    min-height: 130px;
+}
+
+.llm-textarea--user {
+    min-height: 110px;
+}
+
+.llm-options-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.llm-options-row .form-group {
+    flex: 1;
+    min-width: 140px;
+}
+
+.llm-number-input {
+    width: 100%;
+}
+
+.llm-test-toolbar {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 0.25rem;
+}
+
+.llm-response-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.llm-response-header h2 {
+    margin: 0;
+}
+
+.llm-response-meta {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+.llm-response-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875rem;
+    background: #f6f8fa;
+    border: 1px solid #e1e4e8;
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin: 0;
+    max-height: 600px;
+    overflow-y: auto;
+    line-height: 1.6;
+}
+
+.required-mark {
+    color: #dc3545;
+}
+
+/* ── LLM logy ──────────────────────────────────────────────────────────────── */
+
+.llm-logs-page {
+    max-width: 1400px;
+}
+
+.llm-logs-empty {
+    margin-top: 1rem;
+}
+
+.alert-info {
+    background: #e8f4fd;
+    border: 1px solid #bee5fb;
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    color: #0c5460;
+}
+
+.llm-logs-selector {
+    margin-bottom: 1.5rem;
+}
+
+.llm-logs-form-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.llm-logs-form-row .form-group {
+    flex: 1;
+    min-width: 200px;
+    max-width: 320px;
+    margin-bottom: 0;
+}
+
+.llm-logs-btn-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-bottom: 0.1rem;
+}
+
+.llm-logs-results-header {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.llm-logs-results-header h2 {
+    margin: 0;
+}
+
+.llm-logs-count {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+}
+
+.llm-logs-table {
+    font-size: 0.8rem;
+}
+
+.llm-logs-table td {
+    max-width: 280px;
+    vertical-align: top;
+    word-break: break-word;
+}
+
+.llm-logs-expand-btn {
+    background: none;
+    border: none;
+    color: var(--color-primary-light);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.llm-logs-expand-btn:hover {
+    color: var(--color-primary-dark);
+}
+
+.llm-status-badge {
+    display: inline-block;
+    padding: 0.2em 0.55em;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.llm-status-badge--ok {
+    background: #d4edda;
+    color: #155724;
+}
+
+.llm-status-badge--error {
+    background: #f8d7da;
+    color: #721c24;
+}
