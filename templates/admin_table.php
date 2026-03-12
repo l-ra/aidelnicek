@@ -73,6 +73,9 @@ ob_start();
     <?php if ($success === 'updated'): ?>
         <p class="alert alert-success">Záznam byl upraven.</p>
     <?php endif; ?>
+    <?php if ($success === 'cleared'): ?>
+        <p class="alert alert-success">Všechna data tabulky byla smazána.</p>
+    <?php endif; ?>
 
     <form method="get" action="/admin/table" class="table-select-form">
         <div class="form-row form-row--inline">
@@ -97,6 +100,14 @@ ob_start();
             &mdash; celkem <?= $totalRows ?> řádků
             (stránka <?= $page ?> / <?= $totalPages ?>)
         </div>
+        <form method="post" action="/admin/table/clear" class="inline-form">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="table" value="<?= htmlspecialchars($table) ?>">
+            <button type="submit" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Opravdu smazat všechna data v této tabulce?')">
+                Smazat všechna data
+            </button>
+        </form>
 
         <div class="table-container">
             <table class="data-table">
