@@ -41,8 +41,8 @@ class OpenAiProvider implements LlmInterface
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user',   'content' => $userPrompt],
             ],
-            'temperature' => (float) ($options['temperature'] ?? 0.7),
-            'max_tokens'  => (int)   ($options['max_tokens']  ?? 4096),
+            'temperature'          => (float) ($options['temperature']          ?? 0.7),
+            'max_completion_tokens' => (int)   ($options['max_completion_tokens'] ?? 4096),
         ];
 
         $requestAt = date('Y-m-d H:i:s');

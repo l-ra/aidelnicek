@@ -53,7 +53,7 @@ class MealGenerator
             );
 
             $llm     = LlmFactory::create();
-            $options = ['user_id' => $userId, 'temperature' => 0.8, 'max_tokens' => 4096];
+            $options = ['user_id' => $userId, 'temperature' => 0.8, 'max_completion_tokens' => 4096];
 
             $response = $llm->complete($systemPrompt, $userPrompt, $options);
 
