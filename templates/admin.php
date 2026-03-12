@@ -20,14 +20,6 @@ ob_start();
         </div>
 
         <div class="admin-card">
-            <h2>Správa databáze</h2>
-            <p>Prohlížení a editace SQLite databáze aplikace prostřednictvím phpLiteAdmin.</p>
-            <a href="/admin/phpliteadmin.php" class="btn btn-primary" target="_blank">
-                Otevřít phpLiteAdmin
-            </a>
-        </div>
-
-        <div class="admin-card">
             <h2>Informace o systému</h2>
             <dl class="info-list">
                 <dt>PHP verze</dt>
