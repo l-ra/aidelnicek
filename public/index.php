@@ -284,6 +284,33 @@ $router->get('/admin/sql', function () use ($projectRoot) {
     require $projectRoot . '/templates/admin_sql.php';
 });
 
+$router->post('/admin/seed-demo', $requireCsrf('/admin?error=csrf', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+
+    $db     = Database::get();
+    $userId = isset($_POST['user_id']) && $_POST['user_id'] !== ''
+        ? (int) $_POST['user_id']
+        : 0;
+
+    $users = $userId > 0
+        ? [['id' => $userId]]
+        : $db->query('SELECT id FROM users')->fetchAll(PDO::FETCH_ASSOC);
+
+    $week   = MealPlan::getOrCreateCurrentWeek();
+    $weekId = (int) $week['id'];
+
+    foreach ($users as $u) {
+        MealPlan::seedDemoWeek((int) $u['id'], $weekId);
+    }
+
+    header('Location: /admin?success=seeded');
+    exit;
+}));
+
 $router->post('/admin/sql', function () {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
@@ -346,8 +373,6 @@ $router->get('/plan/day', function () use ($projectRoot) {
     $day = isset($_GET['day']) ? (int) $_GET['day'] : $todayIso;
     $day = max(1, min(7, $day));
 
-    MealPlan::seedDemoWeek($userId, $weekId);
-
     $dayPlan = MealPlan::getDayPlan($userId, $weekId, $day);
 
     require $projectRoot . '/templates/day_plan.php';
@@ -382,7 +407,6 @@ $router->get('/plan/week', function () use ($projectRoot) {
     }
 
     $weekId = (int) $week['id'];
-    MealPlan::seedDemoWeek($userId, $weekId);
 
     $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
     $todayIso = (int) date('N');
@@ -507,9 +531,6 @@ $router->get('/shopping', function () use ($projectRoot) {
 
     $week   = MealPlan::getOrCreateCurrentWeek();
     $weekId = (int) $week['id'];
-
-    // Ensure demo meals exist so the generator has data to work with
-    MealPlan::seedDemoWeek($userId, $weekId);
 
     // Auto-generate shopping list if no auto-generated items exist yet
     ShoppingList::generateFromMealPlans($weekId);
@@ -640,7 +661,6 @@ $router->post('/shopping/regenerate', $requireCsrf('/shopping', function () {
     $week   = MealPlan::getOrCreateCurrentWeek();
     $weekId = (int) $week['id'];
 
-    MealPlan::seedDemoWeek($userId, $weekId);
     ShoppingList::generateFromMealPlans($weekId, true);
 
     header('Location: /shopping');

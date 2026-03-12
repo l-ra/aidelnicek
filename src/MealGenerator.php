@@ -70,7 +70,6 @@ class MealGenerator
             return true;
         } catch (\Throwable $e) {
             error_log("MealGenerator::generateWeek user={$userId} week={$weekId}: " . $e->getMessage());
-            MealPlan::seedDemoWeek($userId, $weekId);
             return false;
         }
     }

@@ -1,10 +1,23 @@
 <?php
 $pageTitle = 'Administrace';
 $currentUser = \Aidelnicek\Auth::getCurrentUser();
+
+$db    = \Aidelnicek\Database::get();
+$users = $db->query('SELECT id, name, email FROM users ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
+
+$seeded  = ($_GET['success'] ?? '') === 'seeded';
+$csrfErr = ($_GET['error']   ?? '') === 'csrf';
+
 ob_start();
 ?>
 <div class="admin-dashboard">
     <h1>Administrace</h1>
+
+    <?php if ($seeded): ?>
+        <div class="alert alert-success">Demo data byla úspěšně vygenerována.</div>
+    <?php elseif ($csrfErr): ?>
+        <div class="alert alert-danger">Neplatný bezpečnostní token. Zkuste to znovu.</div>
+    <?php endif; ?>
 
     <div class="admin-cards">
         <div class="admin-card">
@@ -17,6 +30,28 @@ ob_start();
             <h2>SQL konzole</h2>
             <p>Spouštění libovolných SQL příkazů přímo nad databází. Historie příkazů se ukládá v prohlížeči.</p>
             <a href="/admin/sql" class="btn btn-primary">Otevřít konzoli</a>
+        </div>
+
+        <div class="admin-card">
+            <h2>Generování demo dat</h2>
+            <p>Vygeneruje ukázkový jídelníček pro aktuální týden. Pokud uživatel již data má, nic se nepřepíše.</p>
+            <form method="post" action="/admin/seed-demo">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\Aidelnicek\Csrf::generate()) ?>">
+                <div class="form-group">
+                    <label for="seed-user">Uživatel</label>
+                    <select id="seed-user" name="user_id" class="form-control">
+                        <option value="">— Všichni uživatelé —</option>
+                        <?php foreach ($users as $u): ?>
+                            <option value="<?= (int) $u['id'] ?>">
+                                <?= htmlspecialchars($u['name']) ?> (<?= htmlspecialchars($u['email']) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-secondary" style="margin-top:0.75rem">
+                    Vygenerovat demo data
+                </button>
+            </form>
         </div>
 
         <div class="admin-card">
