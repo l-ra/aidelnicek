@@ -55,6 +55,18 @@ ob_start();
         </div>
 
         <div class="admin-card">
+            <h2>Test LLM</h2>
+            <p>Odešlete vlastní prompt na nakonfigurovaný jazykový model a zobrazte vygenerovanou odpověď.</p>
+            <a href="/admin/llm-test" class="btn btn-primary">Otevřít test</a>
+        </div>
+
+        <div class="admin-card">
+            <h2>LLM komunikační logy</h2>
+            <p>Prohlížejte záznamy komunikace s LLM uložené v denních log souborech.</p>
+            <a href="/admin/llm-logs" class="btn btn-primary">Zobrazit logy</a>
+        </div>
+
+        <div class="admin-card">
             <h2>Informace o systému</h2>
             <dl class="info-list">
                 <dt>PHP verze</dt>

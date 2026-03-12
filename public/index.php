@@ -354,6 +354,120 @@ $router->post('/admin/sql', function () {
     exit;
 });
 
+$router->get('/admin/llm-test', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+    require $projectRoot . '/templates/admin_llm_test.php';
+});
+
+$router->post('/admin/llm-test', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Přístup odepřen.']);
+        exit;
+    }
+
+    $token = $_POST['csrf_token'] ?? '';
+    if (!Csrf::validate($token)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Neplatný CSRF token.']);
+        exit;
+    }
+
+    $systemPrompt = trim($_POST['system_prompt'] ?? '');
+    $userPrompt   = trim($_POST['user_prompt']   ?? '');
+    $temperature  = isset($_POST['temperature']) ? (float) $_POST['temperature'] : 0.7;
+    $maxTokens    = isset($_POST['max_tokens'])  ? (int)   $_POST['max_tokens']  : 1024;
+
+    if ($userPrompt === '') {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Uživatelský prompt nesmí být prázdný.']);
+        exit;
+    }
+
+    header('Content-Type: application/json');
+    try {
+        $llm     = \Aidelnicek\Llm\LlmFactory::create();
+        $options = [
+            'temperature'          => max(0.0, min(2.0, $temperature)),
+            'max_completion_tokens' => max(64, min(32000, $maxTokens)),
+            'user_id'              => (int) $user['id'],
+        ];
+        $response = $llm->complete($systemPrompt, $userPrompt, $options);
+        echo json_encode([
+            'ok'       => true,
+            'response' => $response,
+            'model'    => $llm->getModel(),
+            'provider' => $llm->getName(),
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+});
+
+$router->get('/admin/llm-logs', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+    require $projectRoot . '/templates/admin_llm_logs.php';
+});
+
+$router->post('/admin/llm-logs/data', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Přístup odepřen.']);
+        exit;
+    }
+
+    $token = $_POST['csrf_token'] ?? '';
+    if (!Csrf::validate($token)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Neplatný CSRF token.']);
+        exit;
+    }
+
+    $filename = $_POST['filename'] ?? '';
+    if (!preg_match('/^llm_\d{4}-\d{2}-\d{2}\.db$/', $filename)) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Neplatný název souboru.']);
+        exit;
+    }
+
+    $path = $projectRoot . '/data/' . $filename;
+    if (!file_exists($path)) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Soubor neexistuje.']);
+        exit;
+    }
+
+    header('Content-Type: application/json');
+    try {
+        $pdo = new PDO('sqlite:' . $path);
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $rows = $pdo->query(
+            'SELECT id, request_at, provider, model, user_id, prompt_system, prompt_user,
+                    response_text, tokens_in, tokens_out, duration_ms, status, error_message
+             FROM llm_log ORDER BY id DESC'
+        )->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(['ok' => true, 'rows' => $rows], JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+});
+
 // ── M3: Jídelníček ────────────────────────────────────────────────────────────
 
 $router->get('/plan', function () {
