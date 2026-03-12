@@ -119,12 +119,22 @@ class MealGenerator
         ];
         $bodyType = $bodyTypeMap[$user['body_type'] ?? ''] ?? ($user['body_type'] ?: 'neuvedena');
 
+        $height = isset($user['height']) && $user['height'] !== null && $user['height'] !== ''
+            ? (int) $user['height'] . ' cm'
+            : 'neuvedena';
+        $weight = isset($user['weight']) && $user['weight'] !== null && $user['weight'] !== ''
+            ? number_format((float) $user['weight'], 1, '.', '') . ' kg'
+            : 'neuvedena';
+
         $userPrompt = strtr($userTemplate, [
             '{USER_NAME}'     => $user['name']          ?? 'Uživatel',
             '{GENDER}'        => $gender,
             '{AGE}'           => $user['age']            ?? 'neuvedeno',
+            '{HEIGHT}'        => $height,
+            '{WEIGHT}'        => $weight,
             '{BODY_TYPE}'     => $bodyType,
             '{DIETARY_NOTES}' => $user['dietary_notes'] ?: 'žádná omezení',
+            '{DIET_GOAL}'     => $user['diet_goal']     ?: 'neuvedeno',
             '{WEEK_NUMBER}'   => (string) $weekNumber,
             '{YEAR}'          => (string) $year,
             '{HISTORY_BLOCK}' => $historyBlock,

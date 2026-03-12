@@ -8,6 +8,18 @@ ob_start();
 
     <div class="admin-cards">
         <div class="admin-card">
+            <h2>Prohlížeč tabulek</h2>
+            <p>Zobrazení, úprava a mazání záznamů v tabulkách databáze se stránkováním.</p>
+            <a href="/admin/table" class="btn btn-primary">Otevřít prohlížeč</a>
+        </div>
+
+        <div class="admin-card">
+            <h2>SQL konzole</h2>
+            <p>Spouštění libovolných SQL příkazů přímo nad databází. Historie příkazů se ukládá v prohlížeči.</p>
+            <a href="/admin/sql" class="btn btn-primary">Otevřít konzoli</a>
+        </div>
+
+        <div class="admin-card">
             <h2>Správa databáze</h2>
             <p>Prohlížení a editace SQLite databáze aplikace prostřednictvím phpLiteAdmin.</p>
             <a href="/admin/phpliteadmin.php" class="btn btn-primary" target="_blank">

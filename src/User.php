@@ -30,7 +30,7 @@ class User
     public static function findById(int $id): ?array
     {
         $db = Database::get();
-        $stmt = $db->prepare('SELECT id, name, email, gender, age, body_type, dietary_notes, is_admin, created_at FROM users WHERE id = ?');
+        $stmt = $db->prepare('SELECT id, name, email, gender, age, body_type, dietary_notes, height, weight, diet_goal, is_admin, created_at FROM users WHERE id = ?');
         $stmt->execute([$id]);
         $row = $stmt->fetch();
         return $row !== false ? $row : null;
@@ -68,7 +68,7 @@ class User
     {
         $db = Database::get();
         $stmt = $db->prepare(
-            'UPDATE users SET name = ?, gender = ?, age = ?, body_type = ?, dietary_notes = ? WHERE id = ?'
+            'UPDATE users SET name = ?, gender = ?, age = ?, body_type = ?, dietary_notes = ?, height = ?, weight = ?, diet_goal = ? WHERE id = ?'
         );
         $stmt->execute([
             $data['name'],
@@ -76,6 +76,9 @@ class User
             $data['age'] !== '' && $data['age'] !== null ? (int) $data['age'] : null,
             $data['body_type'] ?? null,
             $data['dietary_notes'] ?? null,
+            $data['height'] !== '' && $data['height'] !== null ? (int) $data['height'] : null,
+            $data['weight'] !== '' && $data['weight'] !== null ? (float) $data['weight'] : null,
+            $data['diet_goal'] !== '' ? ($data['diet_goal'] ?? null) : null,
             $id,
         ]);
     }
@@ -141,6 +144,20 @@ class User
             $ageInt = (int) $age;
             if ($ageInt < 1 || $ageInt > 150) {
                 $errors['age'] = 'Věk musí být mezi 1 a 150';
+            }
+        }
+        $height = $data['height'] ?? '';
+        if ($height !== '' && $height !== null) {
+            $h = (int) $height;
+            if ($h < 50 || $h > 250) {
+                $errors['height'] = 'Výška musí být mezi 50 a 250 cm';
+            }
+        }
+        $weight = $data['weight'] ?? '';
+        if ($weight !== '' && $weight !== null) {
+            $w = (float) $weight;
+            if ($w < 20 || $w > 500) {
+                $errors['weight'] = 'Váha musí být mezi 20 a 500 kg';
             }
         }
         return $errors;

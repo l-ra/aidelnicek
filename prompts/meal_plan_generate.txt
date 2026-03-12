@@ -4,8 +4,11 @@ Profil uživatele:
 - Jméno: {USER_NAME}
 - Pohlaví: {GENDER}
 - Věk: {AGE} let
+- Výška: {HEIGHT}
+- Váha: {WEIGHT}
 - Typ postavy: {BODY_TYPE}
 - Stravovací omezení / preference: {DIETARY_NOTES}
+- Cíl jídelníčku: {DIET_GOAL}
 - Generuji pro: týden {WEEK_NUMBER}/{YEAR}
 {HISTORY_BLOCK}
 Pravidla pro sestavení jídelníčku:
