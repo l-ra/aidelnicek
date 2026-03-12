@@ -201,6 +201,31 @@ $router->post('/admin/table/delete', $requireCsrf('/admin/table', function () {
     exit;
 }));
 
+$router->post('/admin/table/clear', $requireCsrf('/admin/table', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+
+    $db        = Database::get();
+    $tableList = $db->query(
+        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    )->fetchAll(PDO::FETCH_COLUMN);
+
+    $table = $_POST['table'] ?? '';
+    if ($table === '' || !in_array($table, $tableList, true)) {
+        header('Location: /admin/table?table=' . urlencode($table) . '&error=invalid');
+        exit;
+    }
+
+    $qt = '"' . str_replace('"', '""', $table) . '"';
+    $db->exec("DELETE FROM {$qt}");
+
+    header('Location: /admin/table?table=' . urlencode($table) . '&success=cleared');
+    exit;
+}));
+
 $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
