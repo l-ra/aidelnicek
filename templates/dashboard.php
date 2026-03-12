@@ -11,7 +11,6 @@ $todayIso   = (int) date('N'); // 1=Mon … 7=Sun
 
 $week    = MealPlan::getOrCreateCurrentWeek();
 $weekId  = (int) $week['id'];
-MealPlan::seedDemoWeek($userId, $weekId);
 $dayPlan = MealPlan::getDayPlan($userId, $weekId, $todayIso);
 
 ob_start();
