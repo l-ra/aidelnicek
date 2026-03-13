@@ -221,4 +221,23 @@ class User
 
         return $errors;
     }
+
+    public static function validateAdminPasswordReset(array $data): array
+    {
+        $errors = [];
+        $newPassword = $data['new_password'] ?? '';
+        $confirmPassword = $data['new_password_confirm'] ?? '';
+
+        if (empty($newPassword)) {
+            $errors['new_password_required'] = 'Nové heslo je povinné';
+        } elseif (strlen($newPassword) < 8) {
+            $errors['new_password_too_short'] = 'Nové heslo musí mít alespoň 8 znaků';
+        }
+
+        if ($newPassword !== $confirmPassword) {
+            $errors['new_password_confirm'] = 'Hesla se neshodují';
+        }
+
+        return $errors;
+    }
 }
