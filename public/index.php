@@ -186,6 +186,41 @@ $router->get('/admin', function () use ($projectRoot) {
     require $projectRoot . '/templates/admin.php';
 });
 
+$router->post('/admin/user-password-reset', $requireCsrf('/admin?password_error=csrf', function () {
+    $adminUser = Auth::requireLogin();
+    if (!User::isAdmin((int) $adminUser['id'])) {
+        header('Location: /');
+        exit;
+    }
+
+    $targetUserId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+    if ($targetUserId <= 0) {
+        header('Location: /admin?password_error=missing_user');
+        exit;
+    }
+
+    $targetUser = User::findById($targetUserId);
+    if ($targetUser === null) {
+        header('Location: /admin?password_error=invalid_user');
+        exit;
+    }
+
+    $passwordData = [
+        'new_password' => $_POST['new_password'] ?? '',
+        'new_password_confirm' => $_POST['new_password_confirm'] ?? '',
+    ];
+    $passwordErrors = User::validateAdminPasswordReset($passwordData);
+    if (!empty($passwordErrors)) {
+        $errorCode = array_key_first($passwordErrors);
+        header('Location: /admin?password_error=' . urlencode((string) $errorCode) . '&user_id=' . $targetUserId);
+        exit;
+    }
+
+    User::updatePassword($targetUserId, $passwordData['new_password']);
+    header('Location: /admin?success=password_reset&user_id=' . $targetUserId);
+    exit;
+}));
+
 $router->get('/admin/table', function () use ($projectRoot) {
     require $projectRoot . '/templates/admin_table.php';
 });

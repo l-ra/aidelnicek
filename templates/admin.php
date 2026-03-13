@@ -5,8 +5,21 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
 $db    = \Aidelnicek\Database::get();
 $users = $db->query('SELECT id, name, email FROM users ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
 
-$seeded  = ($_GET['success'] ?? '') === 'seeded';
-$csrfErr = ($_GET['error']   ?? '') === 'csrf';
+$successCode = $_GET['success'] ?? '';
+$seeded = $successCode === 'seeded';
+$passwordResetSuccess = $successCode === 'password_reset';
+
+$csrfErr = ($_GET['error'] ?? '') === 'csrf' || ($_GET['password_error'] ?? '') === 'csrf';
+$passwordErrorCode = $_GET['password_error'] ?? '';
+$selectedResetUserId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : 0;
+$passwordErrorMessages = [
+    'missing_user' => 'Vyberte uživatele, kterému chcete heslo resetovat.',
+    'invalid_user' => 'Vybraný uživatel neexistuje.',
+    'new_password_required' => 'Nové heslo je povinné.',
+    'new_password_too_short' => 'Nové heslo musí mít alespoň 8 znaků.',
+    'new_password_confirm' => 'Zadaná hesla se neshodují.',
+];
+$passwordErrorMessage = $passwordErrorMessages[$passwordErrorCode] ?? null;
 
 ob_start();
 ?>
@@ -15,8 +28,12 @@ ob_start();
 
     <?php if ($seeded): ?>
         <div class="alert alert-success">Demo data byla úspěšně vygenerována.</div>
+    <?php elseif ($passwordResetSuccess): ?>
+        <div class="alert alert-success">Heslo uživatele bylo úspěšně změněno.</div>
+    <?php elseif ($passwordErrorMessage !== null): ?>
+        <div class="alert alert-error"><?= htmlspecialchars($passwordErrorMessage) ?></div>
     <?php elseif ($csrfErr): ?>
-        <div class="alert alert-danger">Neplatný bezpečnostní token. Zkuste to znovu.</div>
+        <div class="alert alert-error">Neplatný bezpečnostní token. Zkuste to znovu.</div>
     <?php endif; ?>
 
     <div class="admin-cards">
@@ -76,6 +93,35 @@ ob_start();
             <h2>Pozvat uživatele</h2>
             <p>Vygenerujte zvací odkaz s omezenou platností pro konkrétní e-mailovou adresu. Odkaz umožní registraci pouze s daným e-mailem.</p>
             <a href="/admin/invite" class="btn btn-primary">Generovat pozvánku</a>
+        </div>
+
+        <div class="admin-card">
+            <h2>Reset hesla uživatele</h2>
+            <p>Nastavte nové heslo vybranému uživateli. Uživatel se pak přihlásí tímto heslem.</p>
+            <form method="post" action="/admin/user-password-reset">
+                <?= \Aidelnicek\Csrf::field() ?>
+                <div class="form-group">
+                    <label for="reset-user-id">Uživatel</label>
+                    <select id="reset-user-id" name="user_id" class="form-control" required>
+                        <option value="">— Vyberte uživatele —</option>
+                        <?php foreach ($users as $u): ?>
+                            <option value="<?= (int) $u['id'] ?>" <?= $selectedResetUserId === (int) $u['id'] ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($u['name']) ?> (<?= htmlspecialchars($u['email']) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="admin-new-password">Nové heslo</label>
+                    <input id="admin-new-password" name="new_password" type="password" minlength="8" required>
+                    <small class="form-help">Minimálně 8 znaků.</small>
+                </div>
+                <div class="form-group">
+                    <label for="admin-new-password-confirm">Nové heslo znovu</label>
+                    <input id="admin-new-password-confirm" name="new_password_confirm" type="password" minlength="8" required>
+                </div>
+                <button type="submit" class="btn btn-secondary">Nastavit nové heslo</button>
+            </form>
         </div>
 
         <div class="admin-card">
