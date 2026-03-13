@@ -1,0 +1,71 @@
+"""
+LLM Worker — FastAPI sidecar for streaming OpenAI generation.
+
+Listens on port 8001 (internal to the K8s pod).
+PHP triggers generation via POST /generate and receives a job_id.
+Progress is written to the shared SQLite database; PHP's SSE endpoint
+reads it and forwards chunks to the browser.
+"""
+
+import asyncio
+import os
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from database import create_job, open_db
+from generator import stream_and_store
+
+app = FastAPI(title="Aidelnicek LLM Worker", version="1.0.0")
+
+
+class GenerateRequest(BaseModel):
+    user_id: int
+    week_id: int
+    system_prompt: str
+    user_prompt: str
+    model: str = Field(default="")
+    temperature: float = Field(default=0.8, ge=0.0, le=2.0)
+    max_completion_tokens: int = Field(default=4096, ge=64, le=32000)
+    force: bool = False
+
+
+class GenerateResponse(BaseModel):
+    job_id: int
+
+
+@app.post("/generate", response_model=GenerateResponse)
+async def generate(req: GenerateRequest) -> GenerateResponse:
+    model = req.model or os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+    conn = await open_db()
+    try:
+        job_id = await create_job(conn, req.user_id, req.week_id)
+    finally:
+        await conn.close()
+
+    asyncio.create_task(
+        stream_and_store(
+            job_id=job_id,
+            user_id=req.user_id,
+            week_id=req.week_id,
+            system_prompt=req.system_prompt,
+            user_prompt=req.user_prompt,
+            model=model,
+            temperature=req.temperature,
+            max_completion_tokens=req.max_completion_tokens,
+            force=req.force,
+        )
+    )
+
+    return GenerateResponse(job_id=job_id)
+
+
+@app.get("/health")
+async def health() -> dict:
+    db_path = os.environ.get("DB_PATH", "/data/aidelnicek.sqlite")
+    return {
+        "status": "ok",
+        "db_path": db_path,
+        "model": os.environ.get("OPENAI_MODEL", "gpt-4o"),
+    }

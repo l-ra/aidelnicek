@@ -55,6 +55,12 @@ ob_start();
         </div>
 
         <div class="admin-card">
+            <h2>Generování jídelníčku (AI streaming)</h2>
+            <p>Spusťte generování jídelníčku přes Python LLM worker a sledujte odpověď modelu v reálném čase.</p>
+            <a href="/admin/llm-generate" class="btn btn-primary">Spustit generování</a>
+        </div>
+
+        <div class="admin-card">
             <h2>Test LLM</h2>
             <p>Odešlete vlastní prompt na nakonfigurovaný jazykový model a zobrazte vygenerovanou odpověď.</p>
             <a href="/admin/llm-test" class="btn btn-primary">Otevřít test</a>

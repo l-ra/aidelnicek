@@ -47,6 +47,39 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/www/html/data
+
+        - name: llm-worker
+          image: "{{ .Values.llmWorker.image.repository }}:{{ .Values.llmWorker.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.llmWorker.image.pullPolicy }}
+          envFrom:
+            - secretRef:
+                name: {{ include "aidelnicek.fullname" . }}-llm
+                optional: true
+          env:
+            - name: DB_PATH
+              value: /data/aidelnicek.sqlite
+          ports:
+            - name: llm-worker
+              containerPort: 8001
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.llmWorker.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}

@@ -35,6 +35,9 @@ class Database
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 ]
             );
+            // WAL mode allows the Python LLM worker sidecar to write concurrently
+            // while PHP reads (required for SSE streaming progress endpoint).
+            self::$connection->exec('PRAGMA journal_mode=WAL');
             self::$connection->exec('PRAGMA foreign_keys = ON');
             self::runMigrations();
         }
@@ -153,6 +156,21 @@ class Database
             SQL,
             <<<'SQL'
             ALTER TABLE users ADD COLUMN diet_goal TEXT;
+            SQL,
+            // M7: sledování průběhu generování pro Python LLM worker sidecar
+            <<<'SQL'
+            CREATE TABLE IF NOT EXISTS generation_jobs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id       INTEGER NOT NULL,
+                week_id       INTEGER NOT NULL,
+                status        TEXT    NOT NULL DEFAULT 'pending',
+                progress_text TEXT    NOT NULL DEFAULT '',
+                chunk_count   INTEGER NOT NULL DEFAULT 0,
+                created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+                started_at    DATETIME,
+                finished_at   DATETIME,
+                error_message TEXT
+            );
             SQL,
         ];
 
