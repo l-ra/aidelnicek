@@ -75,6 +75,28 @@ class MealGenerator
     }
 
     /**
+     * Vrátí [systemPrompt, userPrompt] sestavené pro daného uživatele a týden.
+     * Používá PHP route /admin/llm-generate před předáním dat Python workeru.
+     *
+     * @return array{0: string, 1: string}
+     * @throws \RuntimeException pokud uživatel nebo týden neexistuje, nebo nelze načíst šablony
+     */
+    public static function getPromptsForWeek(int $userId, int $weekId): array
+    {
+        $user = User::findById($userId);
+        if ($user === null) {
+            throw new \RuntimeException("Uživatel #{$userId} nenalezen.");
+        }
+
+        $week = MealPlan::getWeekById($weekId);
+        if ($week === null) {
+            throw new \RuntimeException("Týden #{$weekId} nenalezen.");
+        }
+
+        return self::buildPrompts($user, (int) $week['week_number'], (int) $week['year']);
+    }
+
+    /**
      * Sestaví systémový a uživatelský prompt ze šablon.
      *
      * @return array{0: string, 1: string}  [systemPrompt, userPrompt]

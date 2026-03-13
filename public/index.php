@@ -468,6 +468,205 @@ $router->post('/admin/llm-logs/data', function () use ($projectRoot) {
     exit;
 });
 
+// ── M7: AI generování jídelníčku přes Python LLM worker (streaming) ──────────
+
+$router->get('/admin/llm-generate', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+    require $projectRoot . '/templates/admin_generate.php';
+});
+
+$router->post('/admin/llm-generate', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Přístup odepřen.']);
+        exit;
+    }
+
+    $token = $_POST['csrf_token'] ?? '';
+    if (!Csrf::validate($token)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Neplatný CSRF token.']);
+        exit;
+    }
+
+    header('Content-Type: application/json');
+
+    $userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+    $force  = !empty($_POST['force']);
+
+    // Accept either a direct week_id or week_number+year (template sends the latter)
+    $weekId = isset($_POST['week_id']) ? (int) $_POST['week_id'] : 0;
+    if ($weekId <= 0 && isset($_POST['week_number'], $_POST['year'])) {
+        $weekNum  = (int) $_POST['week_number'];
+        $weekYear = (int) $_POST['year'];
+        if ($weekNum >= 1 && $weekNum <= 53 && $weekYear >= 2024) {
+            Database::get()->prepare(
+                'INSERT OR IGNORE INTO weeks (week_number, year) VALUES (?, ?)'
+            )->execute([$weekNum, $weekYear]);
+            $row = Database::get()->prepare('SELECT id FROM weeks WHERE week_number = ? AND year = ?');
+            $row->execute([$weekNum, $weekYear]);
+            $weekRow = $row->fetch();
+            $weekId  = $weekRow ? (int) $weekRow['id'] : 0;
+        }
+    }
+
+    if ($userId <= 0 || $weekId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Chybí user_id nebo platný týden.']);
+        exit;
+    }
+
+    try {
+        [$systemPrompt, $userPrompt] = MealGenerator::getPromptsForWeek($userId, $weekId);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+        exit;
+    }
+
+    $model       = getenv('OPENAI_MODEL') ?: 'gpt-4o';
+    $workerUrl   = 'http://localhost:8001/generate';
+    $payload     = json_encode([
+        'user_id'               => $userId,
+        'week_id'               => $weekId,
+        'system_prompt'         => $systemPrompt,
+        'user_prompt'           => $userPrompt,
+        'model'                 => $model,
+        'temperature'           => 0.8,
+        'max_completion_tokens' => 4096,
+        'force'                 => $force,
+    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+    $ch = curl_init($workerUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_TIMEOUT        => 5,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+    ]);
+    $body     = curl_exec($ch);
+    $errno    = curl_errno($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
+        $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}";
+        echo json_encode(['ok' => false, 'error' => "LLM worker nedostupný: {$detail}"]);
+        exit;
+    }
+
+    try {
+        $workerResponse = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
+        $jobId = (int) ($workerResponse['job_id'] ?? 0);
+        if ($jobId <= 0) {
+            throw new \RuntimeException('Worker nevrátil platné job_id.');
+        }
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => 'Neplatná odpověď workeru: ' . $e->getMessage()]);
+        exit;
+    }
+
+    echo json_encode(['ok' => true, 'job_id' => $jobId], JSON_UNESCAPED_UNICODE);
+    exit;
+});
+
+$router->get('/admin/llm-stream', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        http_response_code(403);
+        exit;
+    }
+
+    $jobId = isset($_GET['job_id']) ? (int) $_GET['job_id'] : 0;
+    if ($jobId <= 0) {
+        http_response_code(400);
+        exit;
+    }
+
+    // Flush all output buffers before switching to SSE mode
+    while (@ob_end_flush()) {
+    }
+
+    header('Content-Type: text/event-stream');
+    header('Cache-Control: no-cache');
+    header('X-Accel-Buffering: no'); // Disable nginx/proxy buffering
+    header('Content-Encoding: none');
+    header('Connection: keep-alive');
+
+    set_time_limit(0);
+
+    $db   = Database::get();
+    $stmt = $db->prepare('SELECT id FROM generation_jobs WHERE id = ?');
+    $stmt->execute([$jobId]);
+    if ($stmt->fetch() === false) {
+        echo "data: " . json_encode(['type' => 'error', 'error' => 'Job nenalezen']) . "\n\n";
+        flush();
+        exit;
+    }
+
+    $lastChunkCount = 0;
+    $lastTextLen    = 0;
+    $maxWaitSec     = 600;
+    $startTime      = time();
+    $keepaliveTick  = 0;
+
+    while (!connection_aborted() && (time() - $startTime) < $maxWaitSec) {
+        $stmt = $db->prepare(
+            'SELECT status, progress_text, chunk_count, error_message FROM generation_jobs WHERE id = ?'
+        );
+        $stmt->execute([$jobId]);
+        $job = $stmt->fetch();
+
+        if ($job === false) {
+            echo "data: " . json_encode(['type' => 'error', 'error' => 'Job nenalezen']) . "\n\n";
+            flush();
+            break;
+        }
+
+        $currentCount = (int) $job['chunk_count'];
+
+        if ($currentCount > $lastChunkCount) {
+            $fullText = (string) $job['progress_text'];
+            $newText  = substr($fullText, $lastTextLen);
+            if ($newText !== '') {
+                echo "data: " . json_encode(
+                    ['type' => 'chunk', 'text' => $newText, 'count' => $currentCount],
+                    JSON_UNESCAPED_UNICODE
+                ) . "\n\n";
+                flush();
+                $lastChunkCount = $currentCount;
+                $lastTextLen    = strlen($fullText);
+            }
+        }
+
+        if (in_array($job['status'], ['done', 'error'], true)) {
+            echo "data: " . json_encode(
+                ['type' => 'done', 'status' => $job['status'], 'error' => $job['error_message']],
+                JSON_UNESCAPED_UNICODE
+            ) . "\n\n";
+            flush();
+            break;
+        }
+
+        // SSE keepalive comment every ~10 s to prevent proxy timeout
+        $keepaliveTick++;
+        if ($keepaliveTick % 25 === 0) {
+            echo ": keepalive\n\n";
+            flush();
+        }
+
+        usleep(400_000);
+    }
+
+    exit;
+});
+
 // ── M3: Jídelníček ────────────────────────────────────────────────────────────
 
 $router->get('/plan', function () {
