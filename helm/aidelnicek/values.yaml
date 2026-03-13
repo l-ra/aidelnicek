@@ -5,6 +5,19 @@ image:
   pullPolicy: IfNotPresent
   tag: ""
 
+llmWorker:
+  image:
+    repository: ghcr.io/l-ra/aidelnicek-llm-worker
+    pullPolicy: IfNotPresent
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
 imagePullSecrets: []
 
 nameOverride: ""
