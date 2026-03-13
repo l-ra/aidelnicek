@@ -20,14 +20,18 @@ s odkazem na jídelníček na následující den.
 ## 2. Uživatelé a domácnost
 
 - Aplikace podporuje **libovolný počet uživatelů** v rámci jedné domácnosti.
-- Jeden uživatel má roli **správce** (zakládá domácnost, spravuje uživatele).
+- Jeden uživatel má roli **správce** (zakládá domácnost, spravuje uživatele, generuje pozvánky).
 - Každý uživatel při registraci / v profilu zadává:
   - **Jméno** (zobrazované)
   - **Pohlaví**
   - **Věk**
-  - **Postava** (např. drobná / průměrná / robustní, nebo výška + váha)
+  - **Postava** (drobná / průměrná / robustní)
+  - **Výška** (cm)
+  - **Váha** (kg)
   - **Dietní omezení / alergie** (volitelně)
+  - **Cíl jídelníčku** (volný text — předán do LLM)
 - Autentizace: jméno/e-mail + heslo, session-based.
+- **Registrace** je možná výhradně přes zvací odkaz vygenerovaný správcem.
 
 ---
 
@@ -111,8 +115,11 @@ users
   password_hash   TEXT NOT NULL
   gender          TEXT                    -- male / female / other
   age             INTEGER
-  body_type       TEXT                    -- slim / average / large (nebo výška+váha)
+  body_type       TEXT                    -- slim / average / large
   dietary_notes   TEXT                    -- alergie, omezení (volný text)
+  height          INTEGER                 -- výška v cm
+  weight          REAL                    -- váha v kg
+  diet_goal       TEXT                    -- cíl jídelníčku (volný text, předán do LLM)
   is_admin        INTEGER DEFAULT 0
   push_subscription TEXT                  -- JSON web push subscription
   created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -182,6 +189,7 @@ settings
 | Frontend | HTML + CSS (responsivní, mobile-first) + vanilla JS |
 | Web Push | Service Worker + Push API + VAPID (knihovna `web-push-php`) |
 | AI generování | Python FastAPI sidecar s AsyncOpenAI streaming — viz [docs/M7_LLM_STREAMING.md](docs/M7_LLM_STREAMING.md) |
+| Bezpečnost | HMAC-SHA256 podepsané pozvánky, session-based auth, CSRF ochrana — viz [docs/SECURITY.md](docs/SECURITY.md) |
 | Deployment | Kubernetes (Helm) + GitHub Actions — viz [docs/GITHUB_SECRETS.md](docs/GITHUB_SECRETS.md) |
 
 ---
@@ -199,37 +207,41 @@ settings
 │   └── js/
 │       └── app.js
 ├── src/
-│   ├── Database.php           -- SQLite connection + migrace (WAL mode)
+│   ├── Database.php           -- SQLite connection + migrace + bootstrap admin uživatele
 │   ├── Auth.php               -- autentizace, sessions
 │   ├── User.php               -- správa uživatelů a profilů
+│   ├── Invite.php             -- HMAC-SHA256 pozvánky pro registraci
 │   ├── MealPlan.php           -- logika jídelníčků
 │   ├── MealHistory.php        -- sledování preferencí
-│   ├── MealGenerator.php      -- sestavení promptů + zpracování odpovědi LLM
+│   ├── MealGenerator.php      -- sestavení promptů + volání LLM workeru
 │   ├── ShoppingList.php       -- logika nákupního seznamu
-│   ├── Llm/                   -- LLM abstrakce (Interface, Factory, OpenAiProvider, Logger)
+│   ├── Llm/                   -- LLM abstrakce (zachována pro budoucí použití)
 │   └── Router.php             -- routing
-├── llm_worker/                -- Python FastAPI sidecar pro LLM streaming
-│   ├── main.py                -- FastAPI app (POST /generate, GET /health)
-│   ├── generator.py           -- async streaming + seed meal_plans
+├── llm_worker/                -- Python FastAPI sidecar pro LLM
+│   ├── main.py                -- FastAPI app (POST /generate, POST /complete, GET /health)
+│   ├── generator.py           -- async streaming + sync complete + seed meal_plans
+│   ├── logger.py              -- LLM call logging do per-day SQLite souborů
 │   ├── database.py            -- aiosqlite helpers (WAL mode)
 │   ├── requirements.txt
 │   └── Dockerfile
 ├── templates/
 │   ├── layout.php
 │   ├── login.php
-│   ├── register.php
+│   ├── register.php           -- rozšířeno o výšku, váhu, cíl; vyžaduje pozvánku
 │   ├── profile.php
 │   ├── dashboard.php
 │   ├── day_plan.php
 │   ├── week_plan.php
 │   ├── shopping_list.php
-│   └── admin_generate.php     -- streaming admin UI pro generování jídelníčků
+│   ├── admin_generate.php     -- streaming admin UI pro generování jídelníčků
+│   └── admin_invite.php       -- admin UI pro generování pozvánek
 ├── cron/
-│   ├── generate_weekly.php    -- týdenní generování
+│   ├── generate_weekly.php    -- týdenní generování (přes LLM worker)
 │   └── send_notifications.php -- denní notifikace
 ├── prompts/                   -- šablony LLM promptů
 ├── data/
-│   └── .gitkeep               -- SQLite DB se vytvoří automaticky
+│   ├── .gitkeep               -- SQLite DB se vytvoří automaticky
+│   └── invite_secret.key      -- HMAC tajemství (auto-generováno, není v gitu)
 ├── helm/aidelnicek/           -- Kubernetes Helm chart
 ├── docs/                      -- implementační dokumentace
 ├── composer.json
@@ -240,13 +252,14 @@ settings
 
 ## 11. Obrazovky
 
-1. **Login / Registrace** — přihlášení, založení účtu s profilem.
-2. **Profil** — úprava pohlaví, věku, postavy, dietních omezení, push notifikací.
-3. **Dashboard** — dnešní jídelníček (5 jídel × 2 alternativy), rychlý odkaz na nákupní seznam.
-4. **Denní pohled** — detail jídel daného dne, výběr alternativy, odškrtávání.
-5. **Týdenní přehled** — kompaktní tabulka celého týdne.
-6. **Nákupní seznam** — sdílený seznam, filtr nakoupené/nenakoupené, přidávání položek.
-7. **Správa domácnosti** (admin) — přidání/odebrání uživatelů.
+1. **Login** — přihlášení (registrace vyžaduje zvací odkaz).
+2. **Registrace (s pozvánkou)** — registrace po kliknutí na zvací odkaz; obsahuje všechny profilové údaje.
+3. **Profil** — úprava jména, pohlaví, věku, postavy, výšky, váhy, dietních omezení, cíle, push notifikací.
+4. **Dashboard** — dnešní jídelníček (5 jídel × 2 alternativy), rychlý odkaz na nákupní seznam.
+5. **Denní pohled** — detail jídel daného dne, výběr alternativy, odškrtávání.
+6. **Týdenní přehled** — kompaktní tabulka celého týdne.
+7. **Nákupní seznam** — sdílený seznam, filtr nakoupené/nenakoupené, přidávání položek.
+8. **Administrace** — přehled admin funkcí, generování jídelníčku, LLM test, logy, pozvánky.
 
 ---
 
@@ -261,4 +274,4 @@ settings
 | **M5 — AI generátor** | Napojení na LLM (PHP curl), generování jídelníčků dle profilu + historie |
 | **M6 — Web Push** | Service worker, VAPID, subscription management, denní notifikace |
 | **M7 — LLM streaming** | Python FastAPI sidecar, OpenAI streaming, SSE progress v admin UI — viz [docs/M7_LLM_STREAMING.md](docs/M7_LLM_STREAMING.md) |
-| **M8 — Finalizace** | Responzivní UI, testování, nasazení |
+| **M8 — Bezpečnost a správa** | Unifikace LLM přes worker, logování, bootstrap admin, zvací systém, rozšířená registrace — viz [docs/SECURITY.md](docs/SECURITY.md) |

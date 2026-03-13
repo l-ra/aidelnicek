@@ -5,6 +5,10 @@ Listens on port 8001 (internal to the K8s pod).
 PHP triggers generation via POST /generate and receives a job_id.
 Progress is written to the shared SQLite database; PHP's SSE endpoint
 reads it and forwards chunks to the browser.
+
+POST /complete provides a synchronous (non-streaming) completion used by
+the admin LLM-test sandbox and any PHP code that needs an immediate response.
+Both endpoints log every call to the per-day LLM log SQLite files.
 """
 
 import asyncio
@@ -14,7 +18,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from database import create_job, open_db
-from generator import stream_and_store
+from generator import complete_sync, stream_and_store
 
 app = FastAPI(title="Aidelnicek LLM Worker", version="1.0.0")
 
@@ -34,6 +38,23 @@ class GenerateRequest(BaseModel):
 
 class GenerateResponse(BaseModel):
     job_id: int
+
+
+class CompleteRequest(BaseModel):
+    system_prompt: str = ""
+    user_prompt: str
+    model: str = Field(default="")
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
+    max_completion_tokens: int = Field(default=1024, ge=64, le=128000)
+    user_id: int | None = None
+
+
+class CompleteResponse(BaseModel):
+    response: str
+    model: str
+    provider: str = "openai"
+    tokens_in: int | None = None
+    tokens_out: int | None = None
 
 
 @app.post("/generate", response_model=GenerateResponse)
@@ -61,6 +82,26 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
     )
 
     return GenerateResponse(job_id=job_id)
+
+
+@app.post("/complete", response_model=CompleteResponse)
+async def complete(req: CompleteRequest) -> CompleteResponse:
+    """Synchronous (non-streaming) LLM completion with logging."""
+    model = req.model or os.environ.get("OPENAI_MODEL", "gpt-4o")
+
+    try:
+        result = await complete_sync(
+            system_prompt=req.system_prompt,
+            user_prompt=req.user_prompt,
+            model=model,
+            temperature=req.temperature,
+            max_completion_tokens=req.max_completion_tokens,
+            user_id=req.user_id,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return CompleteResponse(**result)
 
 
 @app.get("/health")

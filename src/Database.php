@@ -40,6 +40,7 @@ class Database
             self::$connection->exec('PRAGMA journal_mode=WAL');
             self::$connection->exec('PRAGMA foreign_keys = ON');
             self::runMigrations();
+            self::ensureAdminUser();
         }
         return self::$connection;
     }
@@ -192,6 +193,44 @@ class Database
                 $db->exec($sql);
                 $db->prepare('INSERT INTO migrations (name) VALUES (?)')->execute([$name]);
             }
+        }
+    }
+
+    /**
+     * Zajistí existenci výchozího administrátorského účtu.
+     *
+     * Spustí se při prvním otevření DB spojení. Pokud v databázi neexistuje žádný
+     * uživatel s příznakem is_admin = 1, vytvoří výchozí admin účet s náhodným heslem.
+     * Heslo je zapsáno do logu aplikace a do souboru /tmp/initial-admin-password.
+     */
+    private static function ensureAdminUser(): void
+    {
+        $db = self::$connection;
+
+        $count = (int) $db->query('SELECT COUNT(*) FROM users WHERE is_admin = 1')->fetchColumn();
+        if ($count > 0) {
+            return;
+        }
+
+        // Náhodné heslo: 16 čitelných znaků z base64 bez padding
+        $password = rtrim(strtr(base64_encode(random_bytes(12)), '+/', '-_'), '=');
+        $hash     = password_hash($password, PASSWORD_DEFAULT);
+
+        $db->prepare(
+            'INSERT INTO users (name, email, password_hash, is_admin) VALUES (?, ?, ?, 1)'
+        )->execute(['Administrátor', 'admin@localhost', $hash]);
+
+        $message  = "Aidelnicek: Byl vytvořen výchozí administrátorský účet.\n"
+                  . "  E-mail:  admin@localhost\n"
+                  . "  Heslo:   {$password}\n"
+                  . "  Čas:     " . date('Y-m-d H:i:s') . "\n";
+
+        error_log(str_replace("\n", ' | ', trim($message)));
+
+        $file    = '/tmp/initial-admin-password';
+        $written = @file_put_contents($file, $message);
+        if ($written !== false) {
+            @chmod($file, 0600);
         }
     }
 }

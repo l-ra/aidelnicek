@@ -2,10 +2,11 @@
 $pageTitle = 'Přihlášení';
 $loginError = $_GET['error'] ?? null;
 $errorMessage = match ($loginError) {
-    'missing' => 'Vyplňte e-mail a heslo.',
-    'invalid' => 'Nesprávný e-mail nebo heslo.',
-    'csrf' => 'Reload stránky a zkuste znovu.',
-    default => null,
+    'missing'          => 'Vyplňte e-mail a heslo.',
+    'invalid'          => 'Nesprávný e-mail nebo heslo.',
+    'csrf'             => 'Reload stránky a zkuste znovu.',
+    'invite_required'  => 'Registrace je možná pouze prostřednictvím pozvánek. Kontaktujte správce.',
+    default            => null,
 };
 ob_start();
 ?>

@@ -157,6 +157,26 @@ Endpoint okamžitě vytvoří záznam v `generation_jobs` a spustí
 `asyncio.create_task(stream_and_store(...))` na pozadí. PHP dostane `job_id` zpět
 do ~100 ms — bez čekání na OpenAI.
 
+**`POST /complete`** (přidáno v M8)
+
+Synchronní (nestreaming) LLM completion pro admin LLM-test sandbox a libovolné PHP klienty.
+Zavolá OpenAI API bez streamingu a vrátí okamžitou odpověď.
+
+```
+Vstup (JSON body):
+  system_prompt         str   (volitelný)
+  user_prompt           str
+  model                 str   (výchozí: OPENAI_MODEL env)
+  temperature           float (výchozí: 0.7)
+  max_completion_tokens int   (výchozí: 1024)
+  user_id               int   (volitelný, pro logování)
+
+Výstup:
+  { "response": "...", "model": "...", "provider": "openai", "tokens_in": N, "tokens_out": N }
+```
+
+Každé volání se loguje do per-day SQLite souboru (`data/llm_YYYY-MM-DD.db`).
+
 **`GET /health`**
 
 Vrátí `{"status":"ok","db_path":"...","model":"..."}` — používá K8s liveness/readiness sondy.
@@ -440,12 +460,13 @@ PHP čte `OPENAI_MODEL` pro předání do Python workeru. Python čte `OPENAI_AU
 
 ---
 
-## 10. Adresářová struktura po M7
+## 10. Adresářová struktura po M7/M8
 
 ```
 llm_worker/
-  main.py               ← FastAPI app (POST /generate, GET /health)
-  generator.py          ← async streaming + INSERT meal_plans
+  main.py               ← FastAPI app (POST /generate, POST /complete, GET /health)
+  generator.py          ← async streaming + sync complete + INSERT meal_plans + logging
+  logger.py             ← LLM call logging do per-day SQLite (přidáno v M8)
   database.py           ← aiosqlite helpers, WAL mode
   requirements.txt
   Dockerfile

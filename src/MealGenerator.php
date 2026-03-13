@@ -4,24 +4,94 @@ declare(strict_types=1);
 
 namespace Aidelnicek;
 
-use Aidelnicek\Llm\LlmFactory;
-
 /**
- * Generuje týdenní jídelníčky pomocí LLM (OpenAI).
+ * Generuje týdenní jídelníčky pomocí LLM (OpenAI) prostřednictvím Python LLM workeru.
+ *
+ * Veškerá komunikace s LLM probíhá přes Python FastAPI sidecar (port 8001).
+ * PHP sestaví prompty a předá je workeru, který asynchronně volá OpenAI API.
+ * Metoda generateWeek() spustí job a polluje výsledek (pro cron job kompatibilitu).
+ * Metoda startGenerationJob() spustí job bez čekání (pro user-facing UI).
  *
  * Ingredience jsou ukládány jako JSON pole objektů {name, quantity, unit}.
  * Šablony promptů se načítají ze složky prompts/ v kořenu projektu.
  */
 class MealGenerator
 {
-    private const MEAL_TYPES  = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
     private const PROMPTS_DIR = __DIR__ . '/../prompts';
 
     /**
-     * Vygeneruje týdenní jídelníček pro daného uživatele přes LLM.
+     * Vrátí URL Python LLM workeru z env proměnné LLM_WORKER_URL (výchozí: http://localhost:8001).
+     */
+    private static function workerBaseUrl(): string
+    {
+        return rtrim(getenv('LLM_WORKER_URL') ?: 'http://localhost:8001', '/');
+    }
+
+    /**
+     * Spustí generování jídelníčku přes LLM worker a vrátí job_id.
+     * Volající je zodpovědný za polling výsledku (nebo ignorování — fire-and-forget).
      *
-     * @param bool $force  true = smaže existující plány uživatele+týden a přegeneruje
-     * @return bool         true = LLM úspěch, false = fallback na demo data
+     * @param bool $force  true = worker přepíše existující plány uživatele+týden
+     * @return int          job_id (> 0) při úspěchu, 0 při chybě
+     */
+    public static function startGenerationJob(int $userId, int $weekId, bool $force = false): int
+    {
+        try {
+            [$systemPrompt, $userPrompt] = self::getPromptsForWeek($userId, $weekId);
+        } catch (\Throwable $e) {
+            error_log("MealGenerator::startGenerationJob user={$userId} week={$weekId}: " . $e->getMessage());
+            return 0;
+        }
+
+        $model     = getenv('OPENAI_MODEL') ?: 'gpt-4o';
+        $maxTokens = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
+        $payload   = json_encode([
+            'user_id'               => $userId,
+            'week_id'               => $weekId,
+            'system_prompt'         => $systemPrompt,
+            'user_prompt'           => $userPrompt,
+            'model'                 => $model,
+            'temperature'           => 0.8,
+            'max_completion_tokens' => $maxTokens,
+            'force'                 => $force,
+        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+        $ch = curl_init(self::workerBaseUrl() . '/generate');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_TIMEOUT        => 5,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        ]);
+        $body     = curl_exec($ch);
+        $errno    = curl_errno($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
+            $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}";
+            error_log("MealGenerator::startGenerationJob: LLM worker nedostupný: {$detail}");
+            return 0;
+        }
+
+        try {
+            $decoded = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
+            $jobId   = (int) ($decoded['job_id'] ?? 0);
+        } catch (\Throwable $e) {
+            error_log("MealGenerator::startGenerationJob: Neplatná odpověď workeru: " . $e->getMessage());
+            return 0;
+        }
+
+        return $jobId;
+    }
+
+    /**
+     * Vygeneruje týdenní jídelníček pro daného uživatele přes LLM worker.
+     * Spustí job a polluje výsledek (max. 10 minut) — vhodné pro cron joby.
+     *
+     * @param bool $force  true = přegeneruje i existující plány
+     * @return bool         true = generování úspěšné, false = selhalo (fallback na demo data)
      */
     public static function generateWeek(int $userId, int $weekId, bool $force = false): bool
     {
@@ -29,42 +99,48 @@ class MealGenerator
             return true;
         }
 
-        if ($force) {
-            Database::get()->prepare(
-                'DELETE FROM meal_plans WHERE user_id = ? AND week_id = ?'
-            )->execute([$userId, $weekId]);
-        }
-
-        try {
-            $user = User::findById($userId);
-            if ($user === null) {
-                throw new \RuntimeException("Uživatel #{$userId} nenalezen.");
-            }
-
-            $week = MealPlan::getWeekById($weekId);
-            if ($week === null) {
-                throw new \RuntimeException("Týden #{$weekId} nenalezen.");
-            }
-
-            [$systemPrompt, $userPrompt] = self::buildPrompts(
-                $user,
-                (int) $week['week_number'],
-                (int) $week['year']
-            );
-
-            $llm     = LlmFactory::create();
-            $maxTokens = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
-            $options = ['user_id' => $userId, 'temperature' => 0.8, 'max_completion_tokens' => $maxTokens];
-
-            $response = $llm->complete($systemPrompt, $userPrompt, $options);
-            $days     = self::parseResponse($response);
-
-            self::seedFromLlm($userId, $weekId, $days);
-            return true;
-        } catch (\Throwable $e) {
-            error_log("MealGenerator::generateWeek user={$userId} week={$weekId}: " . $e->getMessage());
+        $jobId = self::startGenerationJob($userId, $weekId, $force);
+        if ($jobId <= 0) {
             return false;
         }
+
+        return self::waitForJob($jobId);
+    }
+
+    /**
+     * Polluje stav jobu v DB, dokud není dokončen nebo nenastane timeout.
+     *
+     * @param int $maxWaitSec  Maximální čekací doba v sekundách (výchozí: 600)
+     */
+    public static function waitForJob(int $jobId, int $maxWaitSec = 600): bool
+    {
+        $db       = Database::get();
+        $stmt     = $db->prepare('SELECT status, error_message FROM generation_jobs WHERE id = ?');
+        $deadline = time() + $maxWaitSec;
+
+        while (time() < $deadline) {
+            $stmt->execute([$jobId]);
+            $job = $stmt->fetch();
+
+            if ($job === false) {
+                error_log("MealGenerator::waitForJob: job #{$jobId} nenalezen");
+                return false;
+            }
+
+            if ($job['status'] === 'done') {
+                return true;
+            }
+
+            if ($job['status'] === 'error') {
+                error_log("MealGenerator::waitForJob: job #{$jobId} selhal: " . ($job['error_message'] ?? ''));
+                return false;
+            }
+
+            sleep(2);
+        }
+
+        error_log("MealGenerator::waitForJob: job #{$jobId} vypršel po {$maxWaitSec}s");
+        return false;
     }
 
     /**
@@ -156,101 +232,6 @@ class MealGenerator
         ]);
 
         return [$systemPrompt, $userPrompt];
-    }
-
-    /**
-     * Zparsuje JSON odpověď LLM do strukturovaného pole dní.
-     *
-     * @throws \InvalidArgumentException při neplatném JSON nebo chybějící/neúplné struktuře
-     */
-    private static function parseResponse(string $response): array
-    {
-        $clean = trim($response);
-
-        // Odstraní případné markdown code bloky (```json ... ```)
-        if (str_starts_with($clean, '```')) {
-            $clean = preg_replace('/^```[a-z]*\n?/i', '', $clean);
-            $clean = preg_replace('/```\s*$/', '', $clean);
-            $clean = trim($clean);
-        }
-
-        // Ořízne na první { a poslední }
-        $start = strpos($clean, '{');
-        $end   = strrpos($clean, '}');
-        if ($start === false || $end === false) {
-            throw new \InvalidArgumentException('Odpověď neobsahuje JSON objekt.');
-        }
-        $clean = substr($clean, $start, $end - $start + 1);
-
-        try {
-            $data = json_decode($clean, true, 512, JSON_THROW_ON_ERROR);
-        } catch (\JsonException $e) {
-            throw new \InvalidArgumentException('JSON parse chyba: ' . $e->getMessage());
-        }
-
-        if (!isset($data['days']) || !is_array($data['days'])) {
-            throw new \InvalidArgumentException('Chybí klíč "days" v JSON odpovědi.');
-        }
-
-        if (count($data['days']) < 7) {
-            throw new \InvalidArgumentException(
-                'Odpověď obsahuje pouze ' . count($data['days']) . ' dní místo 7.'
-            );
-        }
-
-        return $data['days'];
-    }
-
-    /**
-     * Vloží zparsovaná LLM data do tabulky meal_plans.
-     * Volá MealHistory::recordOffer() pro každé vložené jídlo.
-     */
-    private static function seedFromLlm(int $userId, int $weekId, array $days): void
-    {
-        $db   = Database::get();
-        $stmt = $db->prepare(
-            'INSERT OR IGNORE INTO meal_plans
-                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        );
-
-        foreach ($days as $dayData) {
-            $dayNum = (int) ($dayData['day'] ?? 0);
-            if ($dayNum < 1 || $dayNum > 7) {
-                continue;
-            }
-
-            $meals = $dayData['meals'] ?? [];
-
-            foreach (self::MEAL_TYPES as $mealType) {
-                $slot = $meals[$mealType] ?? [];
-
-                foreach (['alt1' => 1, 'alt2' => 2] as $key => $altNum) {
-                    $alt = $slot[$key] ?? null;
-                    if (empty($alt['name'])) {
-                        continue;
-                    }
-
-                    $ingredientsJson = json_encode(
-                        $alt['ingredients'] ?? [],
-                        JSON_UNESCAPED_UNICODE
-                    );
-
-                    $stmt->execute([
-                        $userId,
-                        $weekId,
-                        $dayNum,
-                        $mealType,
-                        $altNum,
-                        (string) $alt['name'],
-                        (string) ($alt['description'] ?? ''),
-                        $ingredientsJson,
-                    ]);
-
-                    MealHistory::recordOffer($userId, (string) $alt['name']);
-                }
-            }
-        }
     }
 
     /**
