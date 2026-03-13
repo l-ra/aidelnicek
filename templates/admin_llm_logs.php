@@ -70,6 +70,7 @@ ob_start();
                 <h2 id="llm-logs-results-title">Záznamy</h2>
                 <span id="llm-logs-results-count" class="llm-logs-count"></span>
             </div>
+            <p class="llm-logs-hint">Kliknutím na řádek zobrazíte plný obsah promptů a odpovědi.</p>
             <div class="table-container">
                 <table class="data-table llm-logs-table">
                     <thead>
@@ -90,6 +91,27 @@ ob_start();
                     <tbody id="llm-logs-tbody"></tbody>
                 </table>
             </div>
+
+            <div id="llm-logs-detail" class="llm-logs-detail" hidden>
+                <div class="llm-logs-detail-header">
+                    <h3>Detail záznamu <span id="llm-logs-detail-id" class="llm-logs-detail-id"></span></h3>
+                    <button id="llm-logs-detail-close" class="btn btn-secondary btn-sm" type="button">Zavřít ✕</button>
+                </div>
+                <div class="llm-logs-detail-sections">
+                    <div class="llm-logs-detail-section" id="llm-logs-detail-system-wrap">
+                        <h4>Systémový prompt</h4>
+                        <pre class="llm-logs-detail-code"><code id="llm-logs-detail-system"></code></pre>
+                    </div>
+                    <div class="llm-logs-detail-section" id="llm-logs-detail-user-wrap">
+                        <h4>Uživatelský prompt</h4>
+                        <pre class="llm-logs-detail-code"><code id="llm-logs-detail-user"></code></pre>
+                    </div>
+                    <div class="llm-logs-detail-section" id="llm-logs-detail-response-wrap">
+                        <h4>Odpověď</h4>
+                        <pre class="llm-logs-detail-code"><code id="llm-logs-detail-response"></code></pre>
+                    </div>
+                </div>
+            </div>
         </div>
     <?php endif; ?>
 </div>
@@ -100,15 +122,23 @@ ob_start();
     var csrfMeta  = document.querySelector('meta[name="csrf-token"]');
     var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
-    var fileSelect  = document.getElementById('llm-log-file');
-    var loadBtn     = document.getElementById('llm-logs-load-btn');
-    var statusEl    = document.getElementById('llm-logs-status');
-    var resultsBox  = document.getElementById('llm-logs-results');
+    var fileSelect   = document.getElementById('llm-log-file');
+    var loadBtn      = document.getElementById('llm-logs-load-btn');
+    var statusEl     = document.getElementById('llm-logs-status');
+    var resultsBox   = document.getElementById('llm-logs-results');
     var resultsTitle = document.getElementById('llm-logs-results-title');
     var resultsCount = document.getElementById('llm-logs-results-count');
-    var tbody       = document.getElementById('llm-logs-tbody');
+    var tbody        = document.getElementById('llm-logs-tbody');
 
-    var TRUNCATE_LEN = 200;
+    var detailBox      = document.getElementById('llm-logs-detail');
+    var detailIdEl     = document.getElementById('llm-logs-detail-id');
+    var detailSystem   = document.getElementById('llm-logs-detail-system');
+    var detailUser     = document.getElementById('llm-logs-detail-user');
+    var detailResponse = document.getElementById('llm-logs-detail-response');
+    var detailClose    = document.getElementById('llm-logs-detail-close');
+
+    var TRUNCATE_LEN = 120;
+    var activeRow = null;
 
     function escHtml(str) {
         return String(str)
@@ -135,35 +165,48 @@ ob_start();
         return td;
     }
 
-    function makeExpandTd(fullText) {
+    function makePreviewTd(fullText) {
         var td = document.createElement('td');
+        td.classList.add('llm-cell-preview');
         if (!fullText) {
             td.textContent = '–';
             td.classList.add('text-muted');
-            return td;
+        } else {
+            td.textContent = truncate(fullText, TRUNCATE_LEN);
         }
-        var short = truncate(fullText, TRUNCATE_LEN);
-        if (short === fullText) {
-            td.textContent = fullText;
-            return td;
-        }
-        var span = document.createElement('span');
-        span.textContent = short;
-        td.appendChild(span);
-
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'llm-logs-expand-btn';
-        btn.textContent = ' zobrazit vše';
-        btn.addEventListener('click', function () {
-            span.textContent = fullText;
-            btn.remove();
-        });
-        td.appendChild(btn);
         return td;
     }
 
+    function hideDetail() {
+        if (activeRow) {
+            activeRow.classList.remove('llm-log-row--active');
+            activeRow = null;
+        }
+        detailBox.hidden = true;
+    }
+
+    function showDetail(row, trEl) {
+        if (activeRow === trEl) {
+            hideDetail();
+            return;
+        }
+        if (activeRow) activeRow.classList.remove('llm-log-row--active');
+        activeRow = trEl;
+        trEl.classList.add('llm-log-row--active');
+
+        detailIdEl.textContent     = '#' + row.id;
+        detailSystem.textContent   = row.prompt_system  || '(prázdný)';
+        detailUser.textContent     = row.prompt_user    || '(prázdný)';
+        detailResponse.textContent = row.response_text  || '(prázdná)';
+
+        detailBox.hidden = false;
+        detailBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    detailClose.addEventListener('click', hideDetail);
+
     function renderRows(rows) {
+        hideDetail();
         tbody.innerHTML = '';
         if (rows.length === 0) {
             var tr = document.createElement('tr');
@@ -178,6 +221,7 @@ ob_start();
 
         rows.forEach(function (row) {
             var tr = document.createElement('tr');
+            tr.className = 'llm-log-row';
 
             tr.appendChild(makeTd(row.id));
             tr.appendChild(makeTd(row.request_at));
@@ -188,9 +232,9 @@ ob_start();
             tr.appendChild(tdPm);
 
             tr.appendChild(makeTd(row.user_id, row.user_id === null));
-            tr.appendChild(makeExpandTd(row.prompt_system));
-            tr.appendChild(makeExpandTd(row.prompt_user));
-            tr.appendChild(makeExpandTd(row.response_text));
+            tr.appendChild(makePreviewTd(row.prompt_system));
+            tr.appendChild(makePreviewTd(row.prompt_user));
+            tr.appendChild(makePreviewTd(row.response_text));
 
             // Tokens
             var tokensVal = (row.tokens_in !== null || row.tokens_out !== null)
@@ -210,6 +254,7 @@ ob_start();
 
             tr.appendChild(makeTd(row.error_message, !row.error_message));
 
+            tr.addEventListener('click', function () { showDetail(row, tr); });
             tbody.appendChild(tr);
         });
     }
