@@ -85,7 +85,7 @@ async def stream_and_store(
         client = _build_client()
         accumulated = ""
 
-        async with client.chat.completions.stream(
+        stream = await client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -93,12 +93,13 @@ async def stream_and_store(
             ],
             temperature=temperature,
             max_completion_tokens=max_completion_tokens,
-        ) as stream:
-            async for chunk in stream:
-                delta = chunk.choices[0].delta.content if chunk.choices else None
-                if delta:
-                    accumulated += delta
-                    await append_chunk(conn, job_id, delta)
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                accumulated += delta
+                await append_chunk(conn, job_id, delta)
 
         # Parse the complete response
         try:
@@ -110,7 +111,7 @@ async def stream_and_store(
                 "Vrať VÝHRADNĚ platný JSON objekt bez markdown bloků. Začni přímo znakem {"
             )
             retry_accumulated = ""
-            async with client.chat.completions.stream(
+            retry_stream = await client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system_prompt},
@@ -118,12 +119,13 @@ async def stream_and_store(
                 ],
                 temperature=0.2,
                 max_completion_tokens=max_completion_tokens,
-            ) as stream:
-                async for chunk in stream:
-                    delta = chunk.choices[0].delta.content if chunk.choices else None
-                    if delta:
-                        retry_accumulated += delta
-                        await append_chunk(conn, job_id, delta)
+                stream=True,
+            )
+            async for chunk in retry_stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    retry_accumulated += delta
+                    await append_chunk(conn, job_id, delta)
             days = _parse_response(retry_accumulated)
 
         await seed_meal_plans(conn, user_id, week_id, days, force)
