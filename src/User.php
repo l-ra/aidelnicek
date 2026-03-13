@@ -47,19 +47,24 @@ class User
 
     public static function create(array $data): int
     {
-        $db = Database::get();
+        $db   = Database::get();
         $stmt = $db->prepare(
-            'INSERT INTO users (name, email, password_hash, gender, age, body_type, dietary_notes, is_admin) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0)'
+            'INSERT INTO users
+                (name, email, password_hash, gender, age, body_type, dietary_notes,
+                 height, weight, diet_goal, is_admin)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)'
         );
         $stmt->execute([
             $data['name'],
             $data['email'],
             password_hash($data['password'], PASSWORD_DEFAULT),
-            $data['gender'] ?? null,
-            $data['age'] !== '' && $data['age'] !== null ? (int) $data['age'] : null,
-            $data['body_type'] ?? null,
-            $data['dietary_notes'] ?? null,
+            $data['gender']        ?? null,
+            ($data['age'] ?? '') !== '' ? (int) $data['age'] : null,
+            $data['body_type']     ?? null,
+            ($data['dietary_notes'] ?? '') !== '' ? $data['dietary_notes'] : null,
+            ($data['height'] ?? '') !== '' ? (int) $data['height'] : null,
+            ($data['weight'] ?? '') !== '' ? (float) $data['weight'] : null,
+            ($data['diet_goal'] ?? '') !== '' ? $data['diet_goal'] : null,
         ]);
         return (int) $db->lastInsertId();
     }
@@ -115,9 +120,11 @@ class User
     public static function validateRegistration(array $data): array
     {
         $errors = [];
+
         if (empty(trim($data['name'] ?? ''))) {
             $errors['name'] = 'Jméno je povinné';
         }
+
         if (empty(trim($data['email'] ?? ''))) {
             $errors['email'] = 'E-mail je povinný';
         } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
@@ -125,11 +132,37 @@ class User
         } elseif (self::findByEmail($data['email']) !== null) {
             $errors['email'] = 'Tento e-mail je již registrován';
         }
+
         if (empty($data['password'] ?? '')) {
             $errors['password'] = 'Heslo je povinné';
         } elseif (strlen($data['password']) < 8) {
             $errors['password'] = 'Heslo musí mít alespoň 8 znaků';
         }
+
+        $age = $data['age'] ?? '';
+        if ($age !== '' && $age !== null) {
+            $ageInt = (int) $age;
+            if ($ageInt < 1 || $ageInt > 150) {
+                $errors['age'] = 'Věk musí být mezi 1 a 150';
+            }
+        }
+
+        $height = $data['height'] ?? '';
+        if ($height !== '' && $height !== null) {
+            $h = (int) $height;
+            if ($h < 50 || $h > 250) {
+                $errors['height'] = 'Výška musí být mezi 50 a 250 cm';
+            }
+        }
+
+        $weight = $data['weight'] ?? '';
+        if ($weight !== '' && $weight !== null) {
+            $w = (float) $weight;
+            if ($w < 20 || $w > 500) {
+                $errors['weight'] = 'Váha musí být mezi 20 a 500 kg';
+            }
+        }
+
         return $errors;
     }
 

@@ -73,6 +73,12 @@ ob_start();
         </div>
 
         <div class="admin-card">
+            <h2>Pozvat uživatele</h2>
+            <p>Vygenerujte zvací odkaz s omezenou platností pro konkrétní e-mailovou adresu. Odkaz umožní registraci pouze s daným e-mailem.</p>
+            <a href="/admin/invite" class="btn btn-primary">Generovat pozvánku</a>
+        </div>
+
+        <div class="admin-card">
             <h2>Informace o systému</h2>
             <dl class="info-list">
                 <dt>PHP verze</dt>

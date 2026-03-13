@@ -33,7 +33,6 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
                     </form>
                 <?php else: ?>
                     <a href="/login">Přihlásit</a>
-                    <a href="/register">Registrace</a>
                 <?php endif; ?>
             </nav>
         </div>

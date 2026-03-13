@@ -8,6 +8,7 @@ require $projectRoot . '/vendor/autoload.php';
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
+use Aidelnicek\Invite;
 use Aidelnicek\MealGenerator;
 use Aidelnicek\MealHistory;
 use Aidelnicek\MealPlan;
@@ -71,6 +72,11 @@ $router->get('/register', function () use ($projectRoot) {
         header('Location: /');
         exit;
     }
+    $invite = Invite::validateToken($_GET['invite'] ?? '');
+    if ($invite === null) {
+        header('Location: /login?error=invite_required');
+        exit;
+    }
     require $projectRoot . '/templates/register.php';
 });
 
@@ -79,14 +85,25 @@ $router->post('/register', $requireCsrf('/register?error=csrf', function () use 
         header('Location: /');
         exit;
     }
+
+    $inviteToken = $_POST['invite_token'] ?? '';
+    $invite      = Invite::validateToken($inviteToken);
+    if ($invite === null) {
+        header('Location: /login?error=invite_required');
+        exit;
+    }
+
     $data = [
-        'name' => trim($_POST['name'] ?? ''),
-        'email' => trim($_POST['email'] ?? ''),
-        'password' => $_POST['password'] ?? '',
-        'gender' => $_POST['gender'] ?? null,
-        'age' => $_POST['age'] ?? null,
-        'body_type' => $_POST['body_type'] ?? null,
+        'name'          => trim($_POST['name'] ?? ''),
+        'email'         => $invite['email'],
+        'password'      => $_POST['password'] ?? '',
+        'gender'        => $_POST['gender'] ?? null,
+        'age'           => $_POST['age'] ?? null,
+        'body_type'     => $_POST['body_type'] ?? null,
         'dietary_notes' => trim($_POST['dietary_notes'] ?? '') ?: null,
+        'height'        => trim($_POST['height'] ?? '') ?: null,
+        'weight'        => trim($_POST['weight'] ?? '') ?: null,
+        'diet_goal'     => trim($_POST['diet_goal'] ?? '') ?: null,
     ];
     $errors = User::validateRegistration($data);
     if (!empty($errors)) {
@@ -393,18 +410,42 @@ $router->post('/admin/llm-test', function () use ($projectRoot) {
 
     header('Content-Type: application/json');
     try {
-        $llm     = \Aidelnicek\Llm\LlmFactory::create();
-        $options = [
-            'temperature'          => max(0.0, min(2.0, $temperature)),
+        $workerUrl = rtrim(getenv('LLM_WORKER_URL') ?: 'http://localhost:8001', '/');
+        $model     = getenv('OPENAI_MODEL') ?: 'gpt-4o';
+        $payload   = json_encode([
+            'system_prompt'         => $systemPrompt,
+            'user_prompt'           => $userPrompt,
+            'model'                 => $model,
+            'temperature'           => max(0.0, min(2.0, $temperature)),
             'max_completion_tokens' => max(64, min(32000, $maxTokens)),
-            'user_id'              => (int) $user['id'],
-        ];
-        $response = $llm->complete($systemPrompt, $userPrompt, $options);
+            'user_id'               => (int) $user['id'],
+        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+        $ch = curl_init($workerUrl . '/complete');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $payload,
+            CURLOPT_TIMEOUT        => 120,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        ]);
+        $body     = curl_exec($ch);
+        $errno    = curl_errno($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
+            $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}: " . substr((string) $body, 0, 200);
+            echo json_encode(['ok' => false, 'error' => "LLM worker nedostupný: {$detail}"]);
+            exit;
+        }
+
+        $workerResponse = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
         echo json_encode([
             'ok'       => true,
-            'response' => $response,
-            'model'    => $llm->getModel(),
-            'provider' => $llm->getName(),
+            'response' => $workerResponse['response'] ?? '',
+            'model'    => $workerResponse['model']    ?? $model,
+            'provider' => $workerResponse['provider'] ?? 'openai',
         ], JSON_UNESCAPED_UNICODE);
     } catch (\Throwable $e) {
         echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
@@ -823,17 +864,18 @@ $router->post('/plan/regenerate', $requireCsrf('/plan/week', function () {
         exit;
     }
 
-    $weekId  = isset($_POST['week_id']) ? (int) $_POST['week_id'] : 0;
-    $week    = $weekId > 0 ? MealPlan::getWeekById($weekId) : null;
+    $weekId = isset($_POST['week_id']) ? (int) $_POST['week_id'] : 0;
+    $week   = $weekId > 0 ? MealPlan::getWeekById($weekId) : null;
 
     if ($week === null) {
         $week   = MealPlan::getOrCreateCurrentWeek();
         $weekId = (int) $week['id'];
     }
 
-    MealGenerator::generateWeek($userId, (int) $week['id'], true);
+    // Spustí generování přes LLM worker (fire-and-forget — uživatel nemusí čekat)
+    MealGenerator::startGenerationJob($userId, (int) $week['id'], true);
 
-    header('Location: /plan/week?week=' . (int) $week['week_number'] . '&year=' . (int) $week['year']);
+    header('Location: /plan/week?week=' . (int) $week['week_number'] . '&year=' . (int) $week['year'] . '&generating=1');
     exit;
 }));
 
@@ -979,6 +1021,43 @@ $router->post('/shopping/regenerate', $requireCsrf('/shopping', function () {
 
     header('Location: /shopping');
     exit;
+}));
+
+// ── Pozvánky uživatelů (admin) ────────────────────────────────────────────────
+
+$router->get('/admin/invite', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+    require $projectRoot . '/templates/admin_invite.php';
+});
+
+$router->post('/admin/invite', $requireCsrf('/admin/invite?error=csrf', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: /');
+        exit;
+    }
+
+    $email        = trim($_POST['email'] ?? '');
+    $validityHours = isset($_POST['validity_hours']) ? max(1, (int) $_POST['validity_hours']) : 168;
+    $inviteErrors  = [];
+
+    if ($email === '') {
+        $inviteErrors[] = 'E-mail je povinný.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $inviteErrors[] = 'Neplatný formát e-mailu.';
+    }
+
+    if (empty($inviteErrors)) {
+        $inviteUrl = Invite::getInviteUrl($email, $validityHours);
+    } else {
+        $inviteUrl = null;
+    }
+
+    require $projectRoot . '/templates/admin_invite.php';
 }));
 
 $router->dispatch();
