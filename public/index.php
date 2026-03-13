@@ -530,6 +530,7 @@ $router->post('/admin/llm-generate', function () use ($projectRoot) {
     }
 
     $model       = getenv('OPENAI_MODEL') ?: 'gpt-4o';
+    $maxTokens   = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
     $workerUrl   = 'http://localhost:8001/generate';
     $payload     = json_encode([
         'user_id'               => $userId,
@@ -538,7 +539,7 @@ $router->post('/admin/llm-generate', function () use ($projectRoot) {
         'user_prompt'           => $userPrompt,
         'model'                 => $model,
         'temperature'           => 0.8,
-        'max_completion_tokens' => 4096,
+        'max_completion_tokens' => $maxTokens,
         'force'                 => $force,
     ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 

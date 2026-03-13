@@ -35,6 +35,7 @@ class OpenAiProvider implements LlmInterface
 
     public function complete(string $systemPrompt, string $userPrompt, array $options = []): string
     {
+        $defaultMaxTokens = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
         $payload = [
             'model'       => $this->model,
             'messages'    => [
@@ -42,7 +43,7 @@ class OpenAiProvider implements LlmInterface
                 ['role' => 'user',   'content' => $userPrompt],
             ],
             'temperature'          => (float) ($options['temperature']          ?? 0.7),
-            'max_completion_tokens' => (int)   ($options['max_completion_tokens'] ?? 4096),
+            'max_completion_tokens' => (int)   ($options['max_completion_tokens'] ?? $defaultMaxTokens),
         ];
 
         $requestAt = date('Y-m-d H:i:s');
@@ -54,11 +55,20 @@ class OpenAiProvider implements LlmInterface
         $tokensOut = null;
 
         try {
-            $raw       = $this->callApi('/chat/completions', $payload);
-            $decoded   = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
-            $response  = $decoded['choices'][0]['message']['content'] ?? '';
-            $tokensIn  = $decoded['usage']['prompt_tokens']     ?? null;
-            $tokensOut = $decoded['usage']['completion_tokens'] ?? null;
+            $raw          = $this->callApi('/chat/completions', $payload);
+            $decoded      = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            $response     = $decoded['choices'][0]['message']['content'] ?? '';
+            $finishReason = $decoded['choices'][0]['finish_reason'] ?? null;
+            $tokensIn     = $decoded['usage']['prompt_tokens']     ?? null;
+            $tokensOut    = $decoded['usage']['completion_tokens'] ?? null;
+
+            if ($finishReason === 'length') {
+                throw new \RuntimeException(
+                    "Generování přerušeno limitem tokenů (finish_reason='length', "
+                    . "max_completion_tokens={$payload['max_completion_tokens']}). "
+                    . "Zvyšte hodnotu env proměnné LLM_MAX_COMPLETION_TOKENS."
+                );
+            }
         } catch (\Throwable $e) {
             $status   = 'error';
             $errorMsg = $e->getMessage();

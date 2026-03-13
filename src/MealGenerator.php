@@ -53,18 +53,11 @@ class MealGenerator
             );
 
             $llm     = LlmFactory::create();
-            $options = ['user_id' => $userId, 'temperature' => 0.8, 'max_completion_tokens' => 4096];
+            $maxTokens = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
+            $options = ['user_id' => $userId, 'temperature' => 0.8, 'max_completion_tokens' => $maxTokens];
 
             $response = $llm->complete($systemPrompt, $userPrompt, $options);
-
-            try {
-                $days = self::parseResponse($response);
-            } catch (\InvalidArgumentException $e) {
-                $correctionPrompt = "Předchozí odpověď nebyla validní JSON nebo měla chybnou strukturu.\n"
-                    . "Vrať VÝHRADNĚ platný JSON objekt bez markdown bloků. Začni přímo znakem {";
-                $response2 = $llm->complete($systemPrompt, $correctionPrompt, $options);
-                $days      = self::parseResponse($response2);
-            }
+            $days     = self::parseResponse($response);
 
             self::seedFromLlm($userId, $weekId, $days);
             return true;

@@ -45,7 +45,8 @@ a `release.yml`) a namontovány do podu jako env proměnné přes `envFrom.secre
 | `OPENAI_MODEL`        | Ne        | Název modelu (výchozí: `gpt-4o`). Příklady: `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`  |
 | `OPENAI_BASE_URL`     | Ne        | Vlastní endpoint (výchozí: `https://api.openai.com/v1`). Použijte pro Azure OpenAI nebo proxy. |
 | `LLM_PROVIDER`        | Ne        | Provider (výchozí: `openai`). Rezerva pro budoucí přidání dalších providerů.     |
-| `AI_REGEN_UI_ENABLED` | Ne        | `true` = zobrazí tlačítko **Přegenerovat AI** v UI jídelníčku (výchozí: skryto). Lze nastavit odlišně pro staging a production. |
+| `LLM_MAX_COMPLETION_TOKENS` | Ne        | Maximální počet výstupních tokenů na jedno volání (výchozí: `16000`). Plný 7denní jídelníček potřebuje ~5 000–6 000 tokenů; hodnota nižší než ~8 000 způsobí předčasné ukončení generování (`finish_reason='length'`). Zvyšte pro větší modely nebo bohatší jídelníčky. |
+| `AI_REGEN_UI_ENABLED`       | Ne        | `true` = zobrazí tlačítko **Přegenerovat AI** v UI jídelníčku (výchozí: skryto). Lze nastavit odlišně pro staging a production. |
 
 **Doporučení pro prostředí:**
 - Pro staging nastavte `AI_REGEN_UI_ENABLED=true` a levnější model (`gpt-4o-mini`)
