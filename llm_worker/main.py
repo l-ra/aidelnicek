@@ -18,6 +18,8 @@ from generator import stream_and_store
 
 app = FastAPI(title="Aidelnicek LLM Worker", version="1.0.0")
 
+_DEFAULT_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_COMPLETION_TOKENS", "16000"))
+
 
 class GenerateRequest(BaseModel):
     user_id: int
@@ -26,7 +28,7 @@ class GenerateRequest(BaseModel):
     user_prompt: str
     model: str = Field(default="")
     temperature: float = Field(default=0.8, ge=0.0, le=2.0)
-    max_completion_tokens: int = Field(default=4096, ge=64, le=32000)
+    max_completion_tokens: int = Field(default=_DEFAULT_MAX_TOKENS, ge=64, le=128000)
     force: bool = False
 
 

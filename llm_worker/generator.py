@@ -84,6 +84,7 @@ async def stream_and_store(
 
         client = _build_client()
         accumulated = ""
+        finish_reason: str | None = None
 
         stream = await client.chat.completions.create(
             model=model,
@@ -96,38 +97,23 @@ async def stream_and_store(
             stream=True,
         )
         async for chunk in stream:
-            delta = chunk.choices[0].delta.content if chunk.choices else None
-            if delta:
-                accumulated += delta
-                await append_chunk(conn, job_id, delta)
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            if choice.delta.content:
+                accumulated += choice.delta.content
+                await append_chunk(conn, job_id, choice.delta.content)
+            if choice.finish_reason is not None:
+                finish_reason = choice.finish_reason
 
-        # Parse the complete response
-        try:
-            days = _parse_response(accumulated)
-        except ValueError:
-            # One retry with a correction prompt, same as PHP MealGenerator
-            correction = (
-                "Předchozí odpověď nebyla validní JSON nebo měla chybnou strukturu.\n"
-                "Vrať VÝHRADNĚ platný JSON objekt bez markdown bloků. Začni přímo znakem {"
+        if finish_reason == "length":
+            raise RuntimeError(
+                f"Generování přerušeno limitem tokenů (finish_reason='length', "
+                f"max_completion_tokens={max_completion_tokens}). "
+                f"Zvyšte hodnotu env proměnné LLM_MAX_COMPLETION_TOKENS."
             )
-            retry_accumulated = ""
-            retry_stream = await client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": correction},
-                ],
-                temperature=0.2,
-                max_completion_tokens=max_completion_tokens,
-                stream=True,
-            )
-            async for chunk in retry_stream:
-                delta = chunk.choices[0].delta.content if chunk.choices else None
-                if delta:
-                    retry_accumulated += delta
-                    await append_chunk(conn, job_id, delta)
-            days = _parse_response(retry_accumulated)
 
+        days = _parse_response(accumulated)
         await seed_meal_plans(conn, user_id, week_id, days, force)
         await mark_done(conn, job_id)
 
