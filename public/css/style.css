@@ -1740,3 +1740,85 @@ body {
     background: #f8d7da;
     color: #721c24;
 }
+
+.llm-logs-hint {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin: 0 0 0.5rem;
+}
+
+.llm-log-row {
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.llm-log-row:hover {
+    background: #f0f4ff;
+}
+
+.llm-log-row--active {
+    background: #dce8ff !important;
+    outline: 2px solid var(--color-primary-light);
+    outline-offset: -2px;
+}
+
+.llm-cell-preview {
+    color: var(--color-text-muted);
+    font-style: italic;
+    font-size: 0.78rem;
+}
+
+.llm-logs-detail {
+    margin-top: 1.5rem;
+    border: 1px solid var(--color-border, #dee2e6);
+    border-radius: var(--radius);
+    background: #fafbfc;
+    padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.llm-logs-detail-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.llm-logs-detail-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.llm-logs-detail-id {
+    color: var(--color-text-muted);
+    font-weight: normal;
+}
+
+.llm-logs-detail-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.llm-logs-detail-section h4 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    margin: 0 0 0.4rem;
+}
+
+.llm-logs-detail-code {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    background: #1e1e2e;
+    color: #cdd6f4;
+    border-radius: var(--radius);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.82rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+}
