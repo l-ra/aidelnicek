@@ -178,10 +178,10 @@ settings
 | Vrstva | Technologie |
 |--------|------------|
 | Backend | PHP 8.x |
-| Databáze | SQLite3 (lokální soubor) |
+| Databáze | SQLite3 (lokální soubor, WAL mode) |
 | Frontend | HTML + CSS (responsivní, mobile-first) + vanilla JS |
 | Web Push | Service Worker + Push API + VAPID (knihovna `web-push-php`) |
-| AI generování | REST API volání na LLM pro tvorbu jídelníčků |
+| AI generování | Python FastAPI sidecar s AsyncOpenAI streaming — viz [docs/M7_LLM_STREAMING.md](docs/M7_LLM_STREAMING.md) |
 | Deployment | Kubernetes (Helm) + GitHub Actions — viz [docs/GITHUB_SECRETS.md](docs/GITHUB_SECRETS.md) |
 
 ---
@@ -199,15 +199,21 @@ settings
 │   └── js/
 │       └── app.js
 ├── src/
-│   ├── Database.php           -- SQLite connection + migrace
+│   ├── Database.php           -- SQLite connection + migrace (WAL mode)
 │   ├── Auth.php               -- autentizace, sessions
 │   ├── User.php               -- správa uživatelů a profilů
 │   ├── MealPlan.php           -- logika jídelníčků
 │   ├── MealHistory.php        -- sledování preferencí
+│   ├── MealGenerator.php      -- sestavení promptů + zpracování odpovědi LLM
 │   ├── ShoppingList.php       -- logika nákupního seznamu
-│   ├── Generator.php          -- AI generování jídelníčků
-│   ├── Notifier.php           -- web push notifikace
+│   ├── Llm/                   -- LLM abstrakce (Interface, Factory, OpenAiProvider, Logger)
 │   └── Router.php             -- routing
+├── llm_worker/                -- Python FastAPI sidecar pro LLM streaming
+│   ├── main.py                -- FastAPI app (POST /generate, GET /health)
+│   ├── generator.py           -- async streaming + seed meal_plans
+│   ├── database.py            -- aiosqlite helpers (WAL mode)
+│   ├── requirements.txt
+│   └── Dockerfile
 ├── templates/
 │   ├── layout.php
 │   ├── login.php
@@ -216,12 +222,16 @@ settings
 │   ├── dashboard.php
 │   ├── day_plan.php
 │   ├── week_plan.php
-│   └── shopping_list.php
+│   ├── shopping_list.php
+│   └── admin_generate.php     -- streaming admin UI pro generování jídelníčků
 ├── cron/
 │   ├── generate_weekly.php    -- týdenní generování
 │   └── send_notifications.php -- denní notifikace
+├── prompts/                   -- šablony LLM promptů
 ├── data/
 │   └── .gitkeep               -- SQLite DB se vytvoří automaticky
+├── helm/aidelnicek/           -- Kubernetes Helm chart
+├── docs/                      -- implementační dokumentace
 ├── composer.json
 └── README.md
 ```
@@ -248,7 +258,7 @@ settings
 | **M2 — Uživatelé** | Registrace, login, profil (pohlaví, věk, postava), session management |
 | **M3 — Jídelníček** | Zobrazení denní/týdenní, odškrtávání, výběr alternativ, ukládání historie |
 | **M4 — Nákupní seznam** | Sdílený seznam, odškrtávání, ruční přidávání, agregace položek |
-| **M5 — AI generátor** | Napojení na LLM, generování jídelníčků dle profilu + historie, odvození nákupního seznamu |
+| **M5 — AI generátor** | Napojení na LLM (PHP curl), generování jídelníčků dle profilu + historie |
 | **M6 — Web Push** | Service worker, VAPID, subscription management, denní notifikace |
-| **M7 — Automatizace** | Cron úlohy — týdenní generování, denní notifikace |
-| **M8 — Finalizace** | Responzivní UI, testování, nasazení přes php-k8s-app-installer |
+| **M7 — LLM streaming** | Python FastAPI sidecar, OpenAI streaming, SSE progress v admin UI — viz [docs/M7_LLM_STREAMING.md](docs/M7_LLM_STREAMING.md) |
+| **M8 — Finalizace** | Responzivní UI, testování, nasazení |
