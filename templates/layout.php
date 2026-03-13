@@ -17,7 +17,12 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
     <header class="site-header">
         <div class="container">
             <a href="/" class="logo">Aidelnicek</a>
-            <nav class="main-nav">
+            <button class="nav-toggle" aria-label="Otevřít menu" aria-expanded="false" aria-controls="main-nav">
+                <span class="nav-toggle__bar"></span>
+                <span class="nav-toggle__bar"></span>
+                <span class="nav-toggle__bar"></span>
+            </button>
+            <nav class="main-nav" id="main-nav">
                 <a href="/">Dashboard</a>
                 <?php if ($currentUser): ?>
                     <a href="/plan">Jídelníček</a>

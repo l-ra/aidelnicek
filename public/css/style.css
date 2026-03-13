@@ -1822,3 +1822,191 @@ body {
     max-height: 420px;
     overflow-y: auto;
 }
+
+/* ── Responsivní navigace ────────────────────────────────────────────────────── */
+
+.nav-toggle {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.nav-toggle__bar {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: var(--color-white);
+    border-radius: 2px;
+    transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+/* ── Responsivní breakpointy ────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    /* Hamburger button */
+    .nav-toggle {
+        display: flex;
+    }
+
+    /* Animate to X when open */
+    .nav-toggle[aria-expanded="true"] .nav-toggle__bar:nth-child(1) {
+        transform: translateY(7px) rotate(45deg);
+    }
+    .nav-toggle[aria-expanded="true"] .nav-toggle__bar:nth-child(2) {
+        opacity: 0;
+        transform: scaleX(0);
+    }
+    .nav-toggle[aria-expanded="true"] .nav-toggle__bar:nth-child(3) {
+        transform: translateY(-7px) rotate(-45deg);
+    }
+
+    /* Header — logo + hamburger on first row, nav wraps below */
+    .site-header .container {
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    /* Nav hidden by default, shown with .is-open */
+    .main-nav {
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        gap: 0;
+        padding: 0.5rem 0 0.75rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.2);
+        margin-top: 0.5rem;
+    }
+
+    .main-nav.is-open {
+        display: flex;
+    }
+
+    .main-nav a,
+    .main-nav .btn-link {
+        padding: 0.65rem 0;
+        display: block;
+        font-size: 1rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .nav-user {
+        display: block;
+        padding: 0.65rem 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        font-weight: 500;
+        font-size: 0.9rem;
+        opacity: 0.75;
+    }
+
+    .nav-logout {
+        display: block;
+    }
+
+    /* Main content spacing */
+    .site-main {
+        padding: 1.25rem 0;
+    }
+
+    /* Typography scale */
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    /* Dashboard meal list — wrap label above name */
+    .dashboard-meal-list__type {
+        min-width: unset;
+        width: 100%;
+        font-size: 0.8rem;
+        margin-bottom: 0.05rem;
+    }
+
+    .dashboard-meal-list__item {
+        flex-wrap: wrap;
+        gap: 0.15rem;
+    }
+
+    /* Shopping header — stack vertically */
+    .shopping-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .shopping-header__actions {
+        padding-top: 0;
+    }
+
+    /* Shopping progress bar label */
+    .shopping-progress {
+        flex-wrap: wrap;
+    }
+
+    .shopping-progress__label {
+        min-width: unset;
+        width: 100%;
+        text-align: left;
+    }
+
+    /* Shopping add form — stack inputs */
+    .shopping-add-form__inner {
+        flex-direction: column;
+    }
+
+    .shopping-add-input,
+    .shopping-add-qty,
+    .shopping-add-unit,
+    .shopping-add-cat {
+        width: 100%;
+        flex: none;
+        min-width: unset;
+    }
+
+    /* Week plan footer */
+    .week-plan__footer {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    /* Dashboard actions */
+    .dashboard-actions {
+        flex-direction: column;
+    }
+
+    .dashboard-actions .btn {
+        width: 100%;
+        text-align: center;
+    }
+
+    /* Auth form — full width with some margin */
+    .auth-form {
+        margin: 1rem auto;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Reduce container horizontal padding */
+    .container {
+        padding: 0 0.75rem;
+    }
+
+    /* Smaller heading on tiny screens */
+    h1 {
+        font-size: 1.35rem;
+    }
+
+    /* Plan nav day buttons — smaller */
+    .plan-nav__day {
+        padding: 0.35rem 0.45rem;
+        font-size: 0.75rem;
+    }
+
+    .plan-nav__day-date {
+        font-size: 0.65rem;
+    }
+}

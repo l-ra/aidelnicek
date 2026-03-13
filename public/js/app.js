@@ -3,6 +3,9 @@
  */
 
 document.addEventListener('DOMContentLoaded', function () {
+    // ── Responsivní navigace: hamburger toggle ────────────────────────────────
+    initNavToggle();
+
     // ── M1/M2: Toggle zobrazení/skrytí hesla ─────────────────────────────────
     document.querySelectorAll('.password-toggle-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -29,6 +32,59 @@ document.addEventListener('DOMContentLoaded', function () {
     initShoppingRemove();
     initShoppingFilter();
 });
+
+/**
+ * Mobile navigation: toggles the hamburger menu open/closed.
+ * Closes on outside click and when a nav link is activated.
+ */
+function initNavToggle() {
+    var toggle = document.querySelector('.nav-toggle');
+    var nav    = document.getElementById('main-nav');
+    if (!toggle || !nav) { return; }
+
+    function openNav() {
+        nav.classList.add('is-open');
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.setAttribute('aria-label', 'Zavřít menu');
+    }
+
+    function closeNav() {
+        nav.classList.remove('is-open');
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-label', 'Otevřít menu');
+    }
+
+    toggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (nav.classList.contains('is-open')) {
+            closeNav();
+        } else {
+            openNav();
+        }
+    });
+
+    // Close when a nav link or logout button is clicked
+    nav.addEventListener('click', function (e) {
+        if (e.target.closest('a') || e.target.closest('button[type="submit"]')) {
+            closeNav();
+        }
+    });
+
+    // Close on click outside the header
+    document.addEventListener('click', function (e) {
+        if (!e.target.closest('.site-header')) {
+            closeNav();
+        }
+    });
+
+    // Close on Escape key
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && nav.classList.contains('is-open')) {
+            closeNav();
+            toggle.focus();
+        }
+    });
+}
 
 /**
  * Read the CSRF token from the meta tag injected by layout.php.
