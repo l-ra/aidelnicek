@@ -574,8 +574,14 @@ $router->post('/admin/llm-generate', function () use ($projectRoot) {
 
     header('Content-Type: application/json');
 
-    $userId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
-    $force  = !empty($_POST['force']);
+    $userId         = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
+    $force          = !empty($_POST['force']);
+    $generationMode = (string) ($_POST['generation_mode'] ?? 'single');
+    $allowedModes   = ['single', 'shared_all'];
+    if (!in_array($generationMode, $allowedModes, true)) {
+        echo json_encode(['ok' => false, 'error' => 'Neplatný režim generování.']);
+        exit;
+    }
 
     // Accept either a direct week_id or week_number+year (template sends the latter)
     $weekId = isset($_POST['week_id']) ? (int) $_POST['week_id'] : 0;
@@ -593,63 +599,39 @@ $router->post('/admin/llm-generate', function () use ($projectRoot) {
         }
     }
 
-    if ($userId <= 0 || $weekId <= 0) {
-        echo json_encode(['ok' => false, 'error' => 'Chybí user_id nebo platný týden.']);
+    if ($weekId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Chybí platný týden.']);
         exit;
     }
 
-    try {
-        [$systemPrompt, $userPrompt] = MealGenerator::getPromptsForWeek($userId, $weekId);
-    } catch (\Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    if ($userId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Chybí user_id.']);
         exit;
     }
 
-    $model       = getenv('OPENAI_MODEL') ?: 'gpt-4o';
-    $maxTokens   = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
-    $workerUrl   = 'http://localhost:8001/generate';
-    $payload     = json_encode([
-        'user_id'               => $userId,
-        'week_id'               => $weekId,
-        'system_prompt'         => $systemPrompt,
-        'user_prompt'           => $userPrompt,
-        'model'                 => $model,
-        'temperature'           => 0.8,
-        'max_completion_tokens' => $maxTokens,
-        'force'                 => $force,
-    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-
-    $ch = curl_init($workerUrl);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $payload,
-        CURLOPT_TIMEOUT        => 5,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
-    ]);
-    $body     = curl_exec($ch);
-    $errno    = curl_errno($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
-        $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}";
-        echo json_encode(['ok' => false, 'error' => "LLM worker nedostupný: {$detail}"]);
+    $referenceUser = User::findById($userId);
+    if ($referenceUser === null) {
+        echo json_encode(['ok' => false, 'error' => 'Uživatel neexistuje.']);
         exit;
     }
 
-    try {
-        $workerResponse = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
-        $jobId = (int) ($workerResponse['job_id'] ?? 0);
-        if ($jobId <= 0) {
-            throw new \RuntimeException('Worker nevrátil platné job_id.');
-        }
-    } catch (\Throwable $e) {
-        echo json_encode(['ok' => false, 'error' => 'Neplatná odpověď workeru: ' . $e->getMessage()]);
+    $jobId = $generationMode === 'shared_all'
+        ? MealGenerator::startSharedGenerationJob($userId, $weekId, $force)
+        : MealGenerator::startGenerationJob($userId, $weekId, $force);
+
+    if ($jobId <= 0) {
+        $error = $generationMode === 'shared_all'
+            ? 'Společné generování pro všechny uživatele selhalo.'
+            : 'Generování pro vybraného uživatele selhalo.';
+        echo json_encode(['ok' => false, 'error' => $error]);
         exit;
     }
 
-    echo json_encode(['ok' => true, 'job_id' => $jobId], JSON_UNESCAPED_UNICODE);
+    echo json_encode([
+        'ok'              => true,
+        'job_id'          => $jobId,
+        'generation_mode' => $generationMode,
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 });
 

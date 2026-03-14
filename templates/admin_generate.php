@@ -42,7 +42,18 @@ ob_start();
                 <h2>Parametry generování</h2>
 
                 <div class="form-group">
-                    <label for="gen-user">Uživatel</label>
+                    <label for="gen-mode">Režim generování</label>
+                    <select id="gen-mode" class="form-control">
+                        <option value="single" selected>Individuálně pro vybraného uživatele</option>
+                        <option value="shared_all">Společně pro všechny (stejná jídla, různé porce)</option>
+                    </select>
+                    <small id="gen-mode-help" class="form-help">
+                        Vygenerují se jídla pouze pro vybraného uživatele.
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="gen-user" id="gen-user-label">Uživatel</label>
                     <select id="gen-user" class="form-control">
                         <?php foreach ($users as $u): ?>
                             <option value="<?= (int) $u['id'] ?>">
@@ -137,6 +148,7 @@ ob_start();
 }
 .info-list { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; }
 .info-list dt { font-weight: 600; color: var(--color-muted, #666); }
+.form-help { display: block; color: var(--color-muted, #666); margin-top: 0.35rem; }
 </style>
 
 <script>
@@ -158,6 +170,9 @@ ob_start();
     var infoElapsed  = document.getElementById('info-elapsed');
     var infoChunks   = document.getElementById('info-chunks');
 
+    var modeSel   = document.getElementById('gen-mode');
+    var modeHelp  = document.getElementById('gen-mode-help');
+    var userLabel = document.getElementById('gen-user-label');
     var userSel   = document.getElementById('gen-user');
     var weekInput = document.getElementById('gen-week');
     var yearInput = document.getElementById('gen-year');
@@ -184,12 +199,23 @@ ob_start();
         clearInterval(elapsedInt);
     }
 
+    function syncGenerationModeUi() {
+        if (modeSel.value === 'shared_all') {
+            userLabel.textContent = 'Referenční uživatel';
+            modeHelp.textContent = 'Model vytvoří jednu společnou sadu jídel pro všechny uživatele a upraví jen velikosti porcí.';
+        } else {
+            userLabel.textContent = 'Uživatel';
+            modeHelp.textContent = 'Vygenerují se jídla pouze pro vybraného uživatele.';
+        }
+    }
+
     function startGeneration() {
         if (activeEs) {
             activeEs.close();
             activeEs = null;
         }
 
+        var mode   = modeSel.value;
         var userId = parseInt(userSel.value, 10);
         var week   = parseInt(weekInput.value, 10);
         var year   = parseInt(yearInput.value, 10);
@@ -201,7 +227,7 @@ ob_start();
         }
 
         startBtn.disabled = true;
-        setStatus('Načítám prompty…', '');
+        setStatus(mode === 'shared_all' ? 'Načítám společné prompty…' : 'Načítám prompty…', '');
         outputEl.textContent = '';
         outputWrap.hidden    = true;
         doneActions.hidden   = true;
@@ -217,6 +243,7 @@ ob_start();
         fd.append('user_id',    userId);
         fd.append('week_id',    '');     // resolved below
         fd.append('force',      force);
+        fd.append('generation_mode', mode);
 
         // Resolve week_id from week + year via a hidden approach:
         // We send week_num + year and let PHP resolve the week_id.
@@ -243,7 +270,12 @@ ob_start();
 
             var jobId = data.job_id;
             infoJobId.textContent = jobId;
-            setStatus('Generuji…', '');
+            setStatus(
+                mode === 'shared_all'
+                    ? 'Generuji společný jídelníček pro všechny…'
+                    : 'Generuji…',
+                ''
+            );
             outputWrap.hidden = false;
             startElapsedTimer();
 
@@ -307,6 +339,8 @@ ob_start();
     }
 
     startBtn.addEventListener('click', startGeneration);
+    modeSel.addEventListener('change', syncGenerationModeUi);
+    syncGenerationModeUi();
 
     copyBtn.addEventListener('click', function () {
         if (navigator.clipboard) {

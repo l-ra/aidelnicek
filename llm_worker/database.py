@@ -87,7 +87,12 @@ async def mark_error(conn: aiosqlite.Connection, job_id: int, message: str) -> N
 
 
 async def seed_meal_plans(
-    conn: aiosqlite.Connection, user_id: int, week_id: int, days: list, force: bool
+    conn: aiosqlite.Connection,
+    user_id: int,
+    week_id: int,
+    days: list,
+    force: bool,
+    portion_factor: float = 1.0,
 ) -> None:
     if force:
         await conn.execute(
@@ -115,9 +120,11 @@ async def seed_meal_plans(
                 if not alt or not alt.get("name"):
                     continue
 
-                ingredients_json = json.dumps(
-                    alt.get("ingredients", []), ensure_ascii=False
-                )
+                raw_ingredients = alt.get("ingredients", [])
+                if not isinstance(raw_ingredients, list):
+                    raw_ingredients = []
+                ingredients = _scale_ingredients(raw_ingredients, portion_factor)
+                ingredients_json = json.dumps(ingredients, ensure_ascii=False)
                 await conn.execute(
                     stmt,
                     (
@@ -134,6 +141,28 @@ async def seed_meal_plans(
                 await _record_meal_offer(conn, user_id, str(alt["name"]))
 
     await conn.commit()
+
+
+def _scale_ingredients(raw_ingredients: list, portion_factor: float) -> list:
+    if abs(portion_factor - 1.0) < 0.0001:
+        return raw_ingredients
+
+    scaled: list = []
+    for ingredient in raw_ingredients:
+        if not isinstance(ingredient, dict):
+            scaled.append(ingredient)
+            continue
+
+        entry = dict(ingredient)
+        quantity = entry.get("quantity")
+
+        if isinstance(quantity, (int, float)) and not isinstance(quantity, bool):
+            scaled_qty = max(0.1, round(float(quantity) * portion_factor, 1))
+            entry["quantity"] = int(scaled_qty) if float(scaled_qty).is_integer() else scaled_qty
+
+        scaled.append(entry)
+
+    return scaled
 
 
 async def _record_meal_offer(
