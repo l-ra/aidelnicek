@@ -77,6 +77,7 @@ async def stream_and_store(
     temperature: float,
     max_completion_tokens: int,
     force: bool,
+    shared_user_profiles: list[dict] | None = None,
 ) -> None:
     """
     Background async task: stream from OpenAI, write chunks to DB, then store meal plans.
@@ -132,7 +133,23 @@ async def stream_and_store(
             )
 
         days = _parse_response(accumulated)
-        await seed_meal_plans(conn, user_id, week_id, days, force)
+        profiles = shared_user_profiles or []
+        if profiles:
+            for profile in profiles:
+                target_user_id = int(profile.get("user_id", 0))
+                if target_user_id <= 0:
+                    continue
+                portion_factor = float(profile.get("portion_factor", 1.0))
+                await seed_meal_plans(
+                    conn,
+                    target_user_id,
+                    week_id,
+                    days,
+                    force,
+                    portion_factor=portion_factor,
+                )
+        else:
+            await seed_meal_plans(conn, user_id, week_id, days, force)
         await mark_done(conn, job_id)
 
     except Exception as exc:  # noqa: BLE001

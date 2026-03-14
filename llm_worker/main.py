@@ -25,6 +25,11 @@ app = FastAPI(title="Aidelnicek LLM Worker", version="1.0.0")
 _DEFAULT_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_COMPLETION_TOKENS", "16000"))
 
 
+class SharedUserProfile(BaseModel):
+    user_id: int
+    portion_factor: float = Field(default=1.0, gt=0.0, le=3.0)
+
+
 class GenerateRequest(BaseModel):
     user_id: int
     week_id: int
@@ -34,6 +39,7 @@ class GenerateRequest(BaseModel):
     temperature: float = Field(default=0.8, ge=0.0, le=2.0)
     max_completion_tokens: int = Field(default=_DEFAULT_MAX_TOKENS, ge=64, le=128000)
     force: bool = False
+    shared_user_profiles: list[SharedUserProfile] = Field(default_factory=list)
 
 
 class GenerateResponse(BaseModel):
@@ -78,6 +84,7 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
             temperature=req.temperature,
             max_completion_tokens=req.max_completion_tokens,
             force=req.force,
+            shared_user_profiles=[profile.model_dump() for profile in req.shared_user_profiles],
         )
     )
 

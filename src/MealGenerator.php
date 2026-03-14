@@ -18,6 +18,8 @@ namespace Aidelnicek;
 class MealGenerator
 {
     private const PROMPTS_DIR = __DIR__ . '/../prompts';
+    private const MIN_PORTION_FACTOR = 0.60;
+    private const MAX_PORTION_FACTOR = 1.80;
 
     /**
      * Vrátí URL Python LLM workeru z env proměnné LLM_WORKER_URL (výchozí: http://localhost:8001).
@@ -43,18 +45,81 @@ class MealGenerator
             return 0;
         }
 
-        $model     = getenv('OPENAI_MODEL') ?: 'gpt-4o';
-        $maxTokens = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
-        $payload   = json_encode([
+        return self::submitGenerationJob(
+            $userId,
+            $weekId,
+            $systemPrompt,
+            $userPrompt,
+            $force
+        );
+    }
+
+    /**
+     * Spustí společné LLM generování pro všechny uživatele:
+     * - model vygeneruje jednu sadu jídel (podle referenčního uživatele),
+     * - pro každého uživatele se upraví pouze velikost porce (quantity ingrediencí).
+     *
+     * @param int $referenceUserId Uživatel, podle kterého se vybere složení jídel
+     * @param bool $force          true = worker přepíše existující plány uživatele+týden
+     * @return int                 job_id (> 0) při úspěchu, 0 při chybě
+     */
+    public static function startSharedGenerationJob(int $referenceUserId, int $weekId, bool $force = false): int
+    {
+        try {
+            [$systemPrompt, $userPrompt] = self::getPromptsForWeek($referenceUserId, $weekId);
+            $profiles = self::buildSharedUserPortionProfiles($referenceUserId);
+        } catch (\Throwable $e) {
+            error_log(
+                "MealGenerator::startSharedGenerationJob ref_user={$referenceUserId} week={$weekId}: "
+                . $e->getMessage()
+            );
+            return 0;
+        }
+
+        if (empty($profiles)) {
+            error_log('MealGenerator::startSharedGenerationJob: Žádné profily uživatelů pro společné generování.');
+            return 0;
+        }
+
+        return self::submitGenerationJob(
+            $referenceUserId,
+            $weekId,
+            $systemPrompt,
+            $userPrompt,
+            $force,
+            $profiles
+        );
+    }
+
+    /**
+     * Odešle požadavek na LLM worker a vrátí job_id.
+     *
+     * @param array<int, array{user_id: int, portion_factor: float}> $sharedProfiles
+     */
+    private static function submitGenerationJob(
+        int $userId,
+        int $weekId,
+        string $systemPrompt,
+        string $userPrompt,
+        bool $force = false,
+        array $sharedProfiles = []
+    ): int {
+        $payloadData = [
             'user_id'               => $userId,
             'week_id'               => $weekId,
             'system_prompt'         => $systemPrompt,
             'user_prompt'           => $userPrompt,
-            'model'                 => $model,
+            'model'                 => getenv('OPENAI_MODEL') ?: 'gpt-4o',
             'temperature'           => 0.8,
-            'max_completion_tokens' => $maxTokens,
+            'max_completion_tokens' => (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000),
             'force'                 => $force,
-        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        ];
+
+        if (!empty($sharedProfiles)) {
+            $payloadData['shared_user_profiles'] = $sharedProfiles;
+        }
+
+        $payload = json_encode($payloadData, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
 
         $ch = curl_init(self::workerBaseUrl() . '/generate');
         curl_setopt_array($ch, [
@@ -71,7 +136,7 @@ class MealGenerator
 
         if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
             $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}";
-            error_log("MealGenerator::startGenerationJob: LLM worker nedostupný: {$detail}");
+            error_log("MealGenerator::submitGenerationJob: LLM worker nedostupný: {$detail}");
             return 0;
         }
 
@@ -79,11 +144,123 @@ class MealGenerator
             $decoded = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
             $jobId   = (int) ($decoded['job_id'] ?? 0);
         } catch (\Throwable $e) {
-            error_log("MealGenerator::startGenerationJob: Neplatná odpověď workeru: " . $e->getMessage());
+            error_log("MealGenerator::submitGenerationJob: Neplatná odpověď workeru: " . $e->getMessage());
             return 0;
         }
 
         return $jobId;
+    }
+
+    /**
+     * @return array<int, array{user_id: int, portion_factor: float}>
+     */
+    private static function buildSharedUserPortionProfiles(int $referenceUserId): array
+    {
+        $users = Database::get()->query(
+            'SELECT id, gender, age, height, weight, body_type, diet_goal
+             FROM users
+             ORDER BY id ASC'
+        )->fetchAll();
+
+        if (empty($users)) {
+            throw new \RuntimeException('V databázi nejsou žádní uživatelé.');
+        }
+
+        $referenceUser = null;
+        foreach ($users as $u) {
+            if ((int) $u['id'] === $referenceUserId) {
+                $referenceUser = $u;
+                break;
+            }
+        }
+
+        if ($referenceUser === null) {
+            throw new \RuntimeException("Referenční uživatel #{$referenceUserId} nebyl nalezen.");
+        }
+
+        $referenceCalories = self::estimateDailyCalories($referenceUser);
+        if ($referenceCalories <= 0) {
+            throw new \RuntimeException('Nelze vypočítat porce pro referenčního uživatele.');
+        }
+
+        $profiles = [];
+        foreach ($users as $u) {
+            $targetCalories = self::estimateDailyCalories($u);
+            $ratio          = $targetCalories / $referenceCalories;
+            $ratio          = max(self::MIN_PORTION_FACTOR, min(self::MAX_PORTION_FACTOR, $ratio));
+
+            $profiles[] = [
+                'user_id'        => (int) $u['id'],
+                'portion_factor' => round($ratio, 2),
+            ];
+        }
+
+        return $profiles;
+    }
+
+    private static function estimateDailyCalories(array $user): float
+    {
+        $gender = strtolower((string) ($user['gender'] ?? ''));
+        $age    = isset($user['age']) ? (int) $user['age'] : 0;
+        $height = isset($user['height']) ? (int) $user['height'] : 0;
+        $weight = isset($user['weight']) ? (float) $user['weight'] : 0.0;
+
+        $baseByGender = match ($gender) {
+            'male'   => 2200.0,
+            'female' => 1800.0,
+            default  => 2000.0,
+        };
+
+        if ($age > 0 && $height > 0 && $weight > 0) {
+            $genderConstant = match ($gender) {
+                'male'   => 5.0,
+                'female' => -161.0,
+                default  => -78.0, // střed mezi male/female pro "other/unknown"
+            };
+            $bmr          = (10.0 * $weight) + (6.25 * $height) - (5.0 * $age) + $genderConstant;
+            $activity     = self::activityMultiplier((string) ($user['body_type'] ?? ''));
+            $goalModifier = self::goalMultiplier((string) ($user['diet_goal'] ?? ''));
+            $calories     = $bmr * $activity * $goalModifier;
+            return max(1200.0, min(4200.0, $calories));
+        }
+
+        return max(1200.0, min(4200.0, $baseByGender * self::goalMultiplier((string) ($user['diet_goal'] ?? ''))));
+    }
+
+    private static function activityMultiplier(string $bodyType): float
+    {
+        return match (strtolower($bodyType)) {
+            'slim'      => 1.45,
+            'athletic'  => 1.55,
+            'average'   => 1.40,
+            'large'     => 1.30,
+            'overweight'=> 1.30,
+            default     => 1.35,
+        };
+    }
+
+    private static function goalMultiplier(string $dietGoal): float
+    {
+        $goal = mb_strtolower($dietGoal);
+        if ($goal === '') {
+            return 1.0;
+        }
+
+        $reduceKeywords = ['hubn', 'redukc', 'deficit', 'zhubn'];
+        foreach ($reduceKeywords as $keyword) {
+            if (str_contains($goal, $keyword)) {
+                return 0.85;
+            }
+        }
+
+        $gainKeywords = ['nabrat', 'přibrat', 'pribrat', 'objem', 'gain'];
+        foreach ($gainKeywords as $keyword) {
+            if (str_contains($goal, $keyword)) {
+                return 1.15;
+            }
+        }
+
+        return 1.0;
     }
 
     /**
