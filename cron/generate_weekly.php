@@ -7,7 +7,8 @@ declare(strict_types=1);
  *
  * Spouštěn každou neděli v 23:00 přes K8s CronJob (implementován v M7).
  * Vygeneruje jídelníčky pro všechny uživatele na nadcházející ISO týden.
- * Při selhání AI generování pro konkrétního uživatele padne zpět na demo data.
+ * Používá společný LLM návrh jídel (sdílený napříč uživateli) a liší pouze porce.
+ * Při selhání sdíleného AI generování padne zpět na demo data.
  *
  * Výstup: stdout (zachytává K8s jako logy podu)
  */
@@ -34,28 +35,28 @@ if (empty($users)) {
     exit(0);
 }
 
-$ok       = 0;
-$fallback = 0;
-$skipped  = 0;
+$weekId = (int) $nextWeek['id'];
 
-foreach ($users as $user) {
-    $check = $db->prepare('SELECT COUNT(*) FROM meal_plans WHERE user_id = ? AND week_id = ?');
-    $check->execute([(int) $user['id'], (int) $nextWeek['id']]);
-
-    if ((int) $check->fetchColumn() > 0) {
-        $skipped++;
-        continue;
-    }
-
-    $success = MealGenerator::generateWeek((int) $user['id'], (int) $nextWeek['id']);
-
-    if ($success) {
-        echo "  OK:       {$user['name']} (id={$user['id']})\n";
-        $ok++;
-    } else {
-        echo "  FALLBACK: {$user['name']} (id={$user['id']}) — použita demo data\n";
-        $fallback++;
-    }
+$existingCountStmt = $db->prepare('SELECT COUNT(*) FROM meal_plans WHERE week_id = ?');
+$existingCountStmt->execute([$weekId]);
+if ((int) $existingCountStmt->fetchColumn() > 0) {
+    echo "Týden už má vygenerovaný jídelníček — přeskakuji.\n";
+    exit(0);
 }
 
-echo date('Y-m-d H:i:s') . " — Hotovo: {$ok} OK, {$fallback} fallback, {$skipped} přeskočeno\n";
+$referenceUserId = (int) $users[0]['id'];
+$jobId = MealGenerator::startSharedGenerationJob($referenceUserId, $weekId, false);
+
+if ($jobId > 0 && MealGenerator::waitForJob($jobId)) {
+    echo "  OK: společný LLM návrh úspěšně vygenerován pro všechny uživatele.\n";
+    echo date('Y-m-d H:i:s') . " — Hotovo: 1 shared job, 0 fallback\n";
+    exit(0);
+}
+
+echo "  CHYBA: společné AI generování selhalo, přecházím na demo data.\n";
+foreach ($users as $user) {
+    MealPlan::seedDemoWeek((int) $user['id'], $weekId);
+    echo "  FALLBACK: {$user['name']} (id={$user['id']}) — použita demo data\n";
+}
+
+echo date('Y-m-d H:i:s') . " — Hotovo: 0 shared job, " . count($users) . " fallback\n";

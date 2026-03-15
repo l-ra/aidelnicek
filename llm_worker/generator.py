@@ -15,6 +15,7 @@ from openai import AsyncOpenAI
 
 from database import (
     append_chunk,
+    create_llm_proposal,
     mark_done,
     mark_error,
     mark_running,
@@ -133,6 +134,15 @@ async def stream_and_store(
             )
 
         days = _parse_response(accumulated)
+        _, proposal_meal_map = await create_llm_proposal(
+            conn=conn,
+            week_id=week_id,
+            reference_user_id=user_id,
+            generation_job_id=job_id,
+            model=model,
+            days=days,
+        )
+
         profiles = shared_user_profiles or []
         if profiles:
             for profile in profiles:
@@ -144,12 +154,12 @@ async def stream_and_store(
                     conn,
                     target_user_id,
                     week_id,
-                    days,
+                    proposal_meal_map,
                     force,
                     portion_factor=portion_factor,
                 )
         else:
-            await seed_meal_plans(conn, user_id, week_id, days, force)
+            await seed_meal_plans(conn, user_id, week_id, proposal_meal_map, force)
         await mark_done(conn, job_id)
 
     except Exception as exc:  # noqa: BLE001

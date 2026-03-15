@@ -1,0 +1,20 @@
+Vygeneruj podrobný recept pro následující jídlo:
+
+Název jídla: {MEAL_NAME}
+Krátký popis: {MEAL_DESCRIPTION}
+
+Ingredience:
+{INGREDIENTS}
+
+Kontext porcí:
+- Tento recept je sdílený mezi uživateli.
+- Množství surovin se mezi uživateli může lišit (faktor porce: {PORTION_FACTOR}).
+- Proto napiš postup tak, aby fungoval i při škálování porcí.
+
+Požadovaný výstup:
+1) Krátké shrnutí jídla (1–2 věty)
+2) Seznam ingrediencí (přehledně)
+3) Postup vaření v očíslovaných krocích
+4) Tipy na servírování / obměnu
+
+Piš česky.

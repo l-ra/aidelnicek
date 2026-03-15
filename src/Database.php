@@ -173,6 +173,51 @@ class Database
                 error_message TEXT
             );
             SQL,
+            // M9: sdílené LLM návrhy jídelníčků a recepty napříč uživateli
+            <<<'SQL'
+            CREATE TABLE IF NOT EXISTS llm_meal_proposals (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                week_id            INTEGER NOT NULL REFERENCES weeks(id),
+                generation_job_id  INTEGER REFERENCES generation_jobs(id),
+                reference_user_id  INTEGER NOT NULL REFERENCES users(id),
+                llm_model          TEXT,
+                created_at         DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            SQL,
+            <<<'SQL'
+            CREATE TABLE IF NOT EXISTS llm_proposal_meals (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                proposal_id  INTEGER NOT NULL REFERENCES llm_meal_proposals(id) ON DELETE CASCADE,
+                day_of_week  INTEGER NOT NULL,
+                meal_type    TEXT NOT NULL,
+                alternative  INTEGER NOT NULL,
+                meal_name    TEXT NOT NULL,
+                description  TEXT,
+                ingredients  TEXT NOT NULL,
+                UNIQUE(proposal_id, day_of_week, meal_type, alternative)
+            );
+            SQL,
+            <<<'SQL'
+            CREATE TABLE IF NOT EXISTS meal_recipes (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                proposal_meal_id     INTEGER NOT NULL UNIQUE REFERENCES llm_proposal_meals(id) ON DELETE CASCADE,
+                generated_by_user_id INTEGER REFERENCES users(id),
+                model                TEXT,
+                recipe_text          TEXT NOT NULL,
+                created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at           DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            SQL,
+            <<<'SQL'
+            ALTER TABLE meal_plans ADD COLUMN proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id);
+            SQL,
+            <<<'SQL'
+            ALTER TABLE meal_plans ADD COLUMN portion_factor REAL NOT NULL DEFAULT 1.0;
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_meal_plans_proposal_meal_id
+                ON meal_plans(proposal_meal_id);
+            SQL,
         ];
 
         $db = self::$connection;
