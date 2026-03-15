@@ -528,6 +528,34 @@ body {
     color: var(--color-text-muted);
 }
 
+/* ── Meal recipe panel ─────────────────────────────────────────────────────── */
+.meal-recipe-btn {
+    margin-top: 0.35rem;
+}
+
+.meal-recipe-panel {
+    margin-top: 0.5rem;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.5rem;
+    padding: 0.6rem 0.75rem;
+}
+
+.meal-recipe-meta {
+    margin: 0 0 0.35rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
+.meal-recipe-text {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 0.875rem;
+    line-height: 1.45;
+    color: var(--color-text);
+}
+
 /* ── Eaten checkbox ───────────────────────────────────────────────────────── */
 .eaten-checkbox {
     display: inline-flex;

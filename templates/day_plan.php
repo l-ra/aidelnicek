@@ -116,6 +116,18 @@ ob_start();
                                 </ul>
                             <?php endif; ?>
 
+                            <button type="button"
+                                    class="btn btn-secondary btn-sm meal-recipe-btn"
+                                    data-plan-id="<?= (int) $alt['id'] ?>"
+                                    aria-expanded="false">
+                                Zobrazit recept
+                            </button>
+
+                            <div class="meal-recipe-panel" hidden>
+                                <p class="meal-recipe-meta" hidden></p>
+                                <pre class="meal-recipe-text"></pre>
+                            </div>
+
                             <?php if ($isChosen): ?>
                                 <label class="eaten-checkbox" data-plan-id="<?= (int) $alt['id'] ?>">
                                     <input type="checkbox"

@@ -12,6 +12,7 @@ use Aidelnicek\Invite;
 use Aidelnicek\MealGenerator;
 use Aidelnicek\MealHistory;
 use Aidelnicek\MealPlan;
+use Aidelnicek\MealRecipe;
 use Aidelnicek\Router;
 use Aidelnicek\ShoppingList;
 use Aidelnicek\User;
@@ -866,6 +867,36 @@ $router->post('/plan/eaten', $requireCsrf('/plan/day', function () use ($project
     }
 
     header('Location: ' . $redirectTo);
+    exit;
+}));
+
+$router->post('/plan/recipe', $requireCsrf('/plan/day', function () {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $planId = isset($_POST['plan_id']) ? (int) $_POST['plan_id'] : 0;
+
+    header('Content-Type: application/json');
+
+    if ($planId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
+        exit;
+    }
+
+    $result = MealRecipe::getOrGenerateForPlan($userId, $planId);
+    if ($result === null) {
+        echo json_encode(['ok' => false, 'error' => 'Recept se nepodařilo načíst ani vygenerovat.']);
+        exit;
+    }
+
+    echo json_encode([
+        'ok'                  => true,
+        'recipe'              => $result['recipe_text'],
+        'was_generated'       => (bool) $result['was_generated'],
+        'shared_across_users' => (bool) $result['shared_across_users'],
+        'proposal_meal_id'    => (int) $result['proposal_meal_id'],
+        'portion_factor'      => (float) $result['portion_factor'],
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }));
 

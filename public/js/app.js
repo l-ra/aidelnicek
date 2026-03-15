@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── M3: Jídelníček interakce ──────────────────────────────────────────────
     initAlternativePicker();
     initEatenCheckboxes();
+    initMealRecipeButtons();
 
     // ── M4: Nákupní seznam interakce ──────────────────────────────────────────
     initShoppingToggle();
@@ -251,6 +252,81 @@ function attachEatenHandler(cb) {
                 cbEl.checked = !cbEl.checked;
                 showNetworkError();
             });
+    });
+}
+
+/**
+ * M9: Recipe generation & display for each meal alternative.
+ */
+function initMealRecipeButtons() {
+    document.querySelectorAll('.meal-recipe-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var planId = this.getAttribute('data-plan-id');
+            var panel = this.parentElement ? this.parentElement.querySelector('.meal-recipe-panel') : null;
+            if (!planId || !panel) { return; }
+
+            var recipeTextEl = panel.querySelector('.meal-recipe-text');
+            var metaEl = panel.querySelector('.meal-recipe-meta');
+            var loaded = this.getAttribute('data-loaded') === '1';
+            var loading = this.getAttribute('data-loading') === '1';
+            if (!recipeTextEl || loading) { return; }
+
+            // Toggle already loaded recipe without additional network request.
+            if (loaded) {
+                var isHidden = panel.hasAttribute('hidden');
+                if (isHidden) {
+                    panel.removeAttribute('hidden');
+                    this.textContent = 'Skrýt recept';
+                    this.setAttribute('aria-expanded', 'true');
+                } else {
+                    panel.setAttribute('hidden', 'hidden');
+                    this.textContent = 'Zobrazit recept';
+                    this.setAttribute('aria-expanded', 'false');
+                }
+                return;
+            }
+
+            this.setAttribute('data-loading', '1');
+            this.disabled = true;
+            this.textContent = 'Generuji recept...';
+            this.setAttribute('aria-expanded', 'false');
+            panel.setAttribute('hidden', 'hidden');
+
+            postAjax('/plan/recipe', { plan_id: planId })
+                .then(function (json) {
+                    if (!json.ok || !json.recipe) {
+                        showNetworkError();
+                        return;
+                    }
+
+                    recipeTextEl.textContent = json.recipe;
+                    panel.removeAttribute('hidden');
+                    btn.setAttribute('data-loaded', '1');
+                    btn.textContent = 'Skrýt recept';
+                    btn.setAttribute('aria-expanded', 'true');
+
+                    if (metaEl) {
+                        var note = json.was_generated
+                            ? 'Recept byl právě vygenerován přes AI a uložen.'
+                            : 'Recept je načten ze sdílené databáze.';
+                        if (json.shared_across_users === true) {
+                            note += ' Sdílený i pro ostatní uživatele se stejným návrhem jídla.';
+                        }
+                        metaEl.textContent = note;
+                        metaEl.removeAttribute('hidden');
+                    }
+                })
+                .catch(function () {
+                    showNetworkError();
+                })
+                .finally(function () {
+                    btn.removeAttribute('data-loading');
+                    btn.disabled = false;
+                    if (btn.getAttribute('data-loaded') !== '1') {
+                        btn.textContent = 'Zobrazit recept';
+                    }
+                });
+        });
     });
 }
 
