@@ -297,8 +297,8 @@ class GenerationJobProjector
 
         $insertStmt = $db->prepare(
             'INSERT OR IGNORE INTO meal_plans
-                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, proposal_meal_id, portion_factor)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, proposal_meal_id, portion_factor, is_chosen)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
 
         ksort($proposalMeals);
@@ -317,6 +317,7 @@ class GenerationJobProjector
                 $ingredientsJson,
                 $mealEntry['proposal_meal_id'],
                 $portionFactor,
+                ((int) $mealEntry['alternative'] === 1) ? 1 : 0,
             ]);
 
             if ($insertStmt->rowCount() > 0) {

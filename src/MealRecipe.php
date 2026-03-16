@@ -8,6 +8,117 @@ class MealRecipe
 {
     private const PROMPTS_DIR = __DIR__ . '/../prompts';
 
+    public static function startOrFetchForPlan(int $userId, int $planId): ?array
+    {
+        $plan = self::loadPlanWithProposalLink($userId, $planId);
+        if ($plan === null) {
+            return null;
+        }
+
+        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        if ($proposalMealId <= 0) {
+            return ['status' => 'error', 'error' => 'Neplatný návrh jídla pro recept.'];
+        }
+
+        $stored = self::getRecipeByProposalMealId($proposalMealId);
+        if ($stored !== null) {
+            return self::buildReadyPayload(
+                $plan,
+                $proposalMealId,
+                (string) $stored['recipe_text'],
+                false
+            );
+        }
+
+        $runningJobId = self::findRunningRecipeJob(
+            $userId,
+            (int) ($plan['week_id'] ?? 0),
+            $proposalMealId
+        );
+        if ($runningJobId !== null) {
+            return ['status' => 'generating', 'job_id' => $runningJobId];
+        }
+
+        $jobId = self::startRecipeGenerationJob($plan);
+        if ($jobId <= 0) {
+            return ['status' => 'error', 'error' => 'Generování receptu se nepodařilo spustit.'];
+        }
+
+        return ['status' => 'generating', 'job_id' => $jobId];
+    }
+
+    public static function getStatusForPlan(int $userId, int $planId, ?int $jobId = null): ?array
+    {
+        $plan = self::loadPlanWithProposalLink($userId, $planId);
+        if ($plan === null) {
+            return null;
+        }
+
+        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        if ($proposalMealId <= 0) {
+            return ['status' => 'error', 'error' => 'Neplatný návrh jídla pro recept.'];
+        }
+
+        $stored = self::getRecipeByProposalMealId($proposalMealId);
+        if ($stored !== null) {
+            return self::buildReadyPayload(
+                $plan,
+                $proposalMealId,
+                (string) $stored['recipe_text'],
+                false
+            );
+        }
+
+        if ($jobId === null || $jobId <= 0) {
+            return ['status' => 'generating'];
+        }
+
+        $job = GenerationJobService::getJob($jobId);
+        if ($job === null) {
+            return ['status' => 'error', 'error' => 'Generační job receptu nebyl nalezen.'];
+        }
+
+        if ((int) ($job['user_id'] ?? 0) !== $userId || (string) ($job['job_type'] ?? '') !== 'recipe_generate') {
+            return ['status' => 'error', 'error' => 'Neplatný generační job receptu.'];
+        }
+
+        $payload = self::decodeInputPayload((string) ($job['input_payload'] ?? '{}'));
+        $payloadProposalMealId = isset($payload['proposal_meal_id']) ? (int) $payload['proposal_meal_id'] : 0;
+        if ($payloadProposalMealId > 0 && $payloadProposalMealId !== $proposalMealId) {
+            return ['status' => 'error', 'error' => 'Job neodpovídá zvolenému jídlu.'];
+        }
+
+        $status = (string) ($job['status'] ?? '');
+        if ($status === 'error') {
+            return [
+                'status' => 'error',
+                'error' => (string) ($job['error_message'] ?? 'Generování receptu selhalo.'),
+            ];
+        }
+        if ($status !== 'done') {
+            return ['status' => 'generating', 'job_id' => $jobId];
+        }
+
+        $output = GenerationJobService::getOutput($jobId);
+        if ($output === null) {
+            return ['status' => 'generating', 'job_id' => $jobId];
+        }
+
+        $recipeText = trim((string) ($output['raw_text'] ?? ''));
+        if ($recipeText === '') {
+            return ['status' => 'error', 'error' => 'Vygenerovaný recept je prázdný.'];
+        }
+
+        self::storeRecipe(
+            $proposalMealId,
+            $userId,
+            (string) ($output['model'] ?? (getenv('OPENAI_MODEL') ?: 'gpt-4o')),
+            $recipeText
+        );
+
+        return self::buildReadyPayload($plan, $proposalMealId, $recipeText, true);
+    }
+
     public static function getOrGenerateForPlan(int $userId, int $planId): ?array
     {
         $plan = self::findPlanForUser($userId, $planId);
@@ -52,6 +163,37 @@ class MealRecipe
         return [
             'recipe_text'         => $generated['recipe_text'],
             'was_generated'       => true,
+            'shared_across_users' => self::countDistinctUsersForProposalMeal($proposalMealId) > 1,
+            'proposal_meal_id'    => $proposalMealId,
+            'portion_factor'      => isset($plan['portion_factor']) ? (float) $plan['portion_factor'] : 1.0,
+        ];
+    }
+
+    private static function loadPlanWithProposalLink(int $userId, int $planId): ?array
+    {
+        $plan = self::findPlanForUser($userId, $planId);
+        if ($plan === null) {
+            return null;
+        }
+
+        $proposalMealId = self::ensureProposalMealLink($plan, $userId);
+        if ($proposalMealId <= 0) {
+            return null;
+        }
+
+        return self::findPlanForUser($userId, $planId);
+    }
+
+    private static function buildReadyPayload(
+        array $plan,
+        int $proposalMealId,
+        string $recipeText,
+        bool $wasGenerated
+    ): array {
+        return [
+            'status'              => 'ready',
+            'recipe'              => $recipeText,
+            'was_generated'       => $wasGenerated,
             'shared_across_users' => self::countDistinctUsersForProposalMeal($proposalMealId) > 1,
             'proposal_meal_id'    => $proposalMealId,
             'portion_factor'      => isset($plan['portion_factor']) ? (float) $plan['portion_factor'] : 1.0,
@@ -184,6 +326,59 @@ class MealRecipe
                 recipe_text          = excluded.recipe_text,
                 updated_at           = CURRENT_TIMESTAMP'
         )->execute([$proposalMealId, $generatedByUserId, $model, $recipeText]);
+    }
+
+    private static function findRunningRecipeJob(int $userId, int $weekId, int $proposalMealId): ?int
+    {
+        $stmt = Database::get()->prepare(
+            "SELECT id, input_payload
+             FROM generation_jobs
+             WHERE user_id = ? AND week_id = ? AND job_type = 'recipe_generate' AND status IN ('pending', 'running')
+             ORDER BY id DESC
+             LIMIT 25"
+        );
+        $stmt->execute([$userId, $weekId]);
+
+        foreach ($stmt->fetchAll() as $row) {
+            $payload = self::decodeInputPayload((string) ($row['input_payload'] ?? '{}'));
+            if ((int) ($payload['proposal_meal_id'] ?? 0) === $proposalMealId) {
+                return (int) $row['id'];
+            }
+        }
+
+        return null;
+    }
+
+    private static function startRecipeGenerationJob(array $plan): int
+    {
+        [$systemPrompt, $userPrompt] = self::buildRecipePrompts($plan);
+
+        $model = getenv('OPENAI_MODEL') ?: 'gpt-4o';
+        return GenerationJobService::startJob([
+            'user_id' => isset($plan['user_id']) ? (int) $plan['user_id'] : 0,
+            'week_id' => isset($plan['week_id']) ? (int) $plan['week_id'] : 0,
+            'job_type' => 'recipe_generate',
+            'mode' => 'async',
+            'system_prompt' => $systemPrompt,
+            'user_prompt' => $userPrompt,
+            'model' => $model,
+            'temperature' => 0.3,
+            'max_completion_tokens' => 2200,
+            'input_payload' => [
+                'plan_id' => isset($plan['id']) ? (int) $plan['id'] : null,
+                'proposal_meal_id' => isset($plan['proposal_meal_id']) ? (int) $plan['proposal_meal_id'] : null,
+            ],
+        ]);
+    }
+
+    private static function decodeInputPayload(string $raw): array
+    {
+        try {
+            $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            return is_array($decoded) ? $decoded : [];
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     private static function generateRecipeViaWorker(array $plan): ?array

@@ -6,6 +6,7 @@ $pageTitle = 'Denní jídelníček';
 $csrfToken = Csrf::generate();
 
 $currentRedirect = '/plan/day?day=' . $day;
+$householdSelections = $householdSelections ?? [];
 
 // Day navigation
 $prevDay = $day > 1 ? $day - 1 : null;
@@ -59,6 +60,16 @@ ob_start();
             $slot = $dayPlan[$mealType] ?? ['alt1' => null, 'alt2' => null];
             $alt1 = $slot['alt1'];
             $alt2 = $slot['alt2'];
+            $chosenAltNum = null;
+            foreach ([1 => $alt1, 2 => $alt2] as $candidateAltNum => $candidateAlt) {
+                if ($candidateAlt !== null && (int) ($candidateAlt['is_chosen'] ?? 0) === 1) {
+                    $chosenAltNum = $candidateAltNum;
+                    break;
+                }
+            }
+            if ($chosenAltNum === null) {
+                $chosenAltNum = $alt1 !== null ? 1 : ($alt2 !== null ? 2 : null);
+            }
             ?>
             <div class="meal-card" data-meal-type="<?= htmlspecialchars($mealType) ?>">
                 <div class="meal-card__header">
@@ -68,8 +79,10 @@ ob_start();
                     <?php foreach ([1 => $alt1, 2 => $alt2] as $altNum => $alt): ?>
                         <?php if ($alt === null): continue; endif; ?>
                         <?php
-                        $isChosen = (bool) $alt['is_chosen'];
+                        $isChosen = $chosenAltNum !== null && $chosenAltNum === $altNum;
                         $isEaten  = (bool) $alt['is_eaten'];
+                        $hasStoredRecipe = (int) ($alt['has_recipe'] ?? 0) === 1;
+                        $otherMembers = $householdSelections[$mealType]['alt' . $altNum] ?? [];
                         $altClass = 'alt-option';
                         if ($isChosen) $altClass .= ' is-chosen';
                         if ($isEaten)  $altClass .= ' is-eaten';
@@ -116,11 +129,23 @@ ob_start();
                                 </ul>
                             <?php endif; ?>
 
+                            <?php if (!empty($otherMembers)): ?>
+                                <div class="alt-household-pref">
+                                    <span class="alt-household-pref__label">Zvolili:</span>
+                                    <span class="alt-household-pref__users">
+                                        <?php foreach ($otherMembers as $memberName): ?>
+                                            <span class="alt-household-pref__user"><?= htmlspecialchars((string) $memberName) ?></span>
+                                        <?php endforeach; ?>
+                                    </span>
+                                </div>
+                            <?php endif; ?>
+
                             <button type="button"
                                     class="btn btn-secondary btn-sm meal-recipe-btn"
                                     data-plan-id="<?= (int) $alt['id'] ?>"
+                                    data-has-recipe="<?= $hasStoredRecipe ? '1' : '0' ?>"
                                     aria-expanded="false">
-                                Zobrazit recept
+                                <?= $hasStoredRecipe ? 'Zobraz recept' : 'Generuj recept' ?>
                             </button>
 
                             <div class="meal-recipe-panel" hidden>

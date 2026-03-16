@@ -796,7 +796,9 @@ $router->get('/plan/day', function () use ($projectRoot) {
     $day = isset($_GET['day']) ? (int) $_GET['day'] : $todayIso;
     $day = max(1, min(7, $day));
 
+    MealPlan::ensureSingleChosenPerSlot($userId, $weekId);
     $dayPlan = MealPlan::getDayPlan($userId, $weekId, $day);
+    $householdSelections = MealPlan::getHouseholdSelectionsForDay($userId, $weekId, $day);
 
     require $projectRoot . '/templates/day_plan.php';
 });
@@ -831,6 +833,7 @@ $router->get('/plan/week', function () use ($projectRoot) {
 
     $weekId = (int) $week['id'];
 
+    MealPlan::ensureSingleChosenPerSlot($userId, $weekId);
     $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
     $todayIso = (int) date('N');
 
@@ -933,20 +936,53 @@ $router->post('/plan/recipe', $requireCsrf('/plan/day', function () {
         exit;
     }
 
-    $result = MealRecipe::getOrGenerateForPlan($userId, $planId);
+    $result = MealRecipe::startOrFetchForPlan($userId, $planId);
     if ($result === null) {
-        echo json_encode(['ok' => false, 'error' => 'Recept se nepodařilo načíst ani vygenerovat.']);
+        echo json_encode(['ok' => false, 'error' => 'Recept se nepodařilo načíst.']);
         exit;
     }
 
-    echo json_encode([
-        'ok'                  => true,
-        'recipe'              => $result['recipe_text'],
-        'was_generated'       => (bool) $result['was_generated'],
-        'shared_across_users' => (bool) $result['shared_across_users'],
-        'proposal_meal_id'    => (int) $result['proposal_meal_id'],
-        'portion_factor'      => (float) $result['portion_factor'],
-    ], JSON_UNESCAPED_UNICODE);
+    if (($result['status'] ?? '') === 'error') {
+        echo json_encode([
+            'ok' => false,
+            'error' => (string) ($result['error'] ?? 'Generování receptu selhalo.'),
+        ]);
+        exit;
+    }
+
+    echo json_encode(array_merge(['ok' => true], $result), JSON_UNESCAPED_UNICODE);
+    exit;
+}));
+
+$router->get('/plan/recipe-status', function () {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $planId = isset($_GET['plan_id']) ? (int) $_GET['plan_id'] : 0;
+    $jobId  = isset($_GET['job_id']) ? (int) $_GET['job_id'] : 0;
+
+    header('Content-Type: application/json');
+
+    if ($planId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
+        exit;
+    }
+
+    $result = MealRecipe::getStatusForPlan($userId, $planId, $jobId > 0 ? $jobId : null);
+    if ($result === null) {
+        echo json_encode(['ok' => false, 'error' => 'Recept se nepodařilo načíst.']);
+        exit;
+    }
+
+    if (($result['status'] ?? '') === 'error') {
+        echo json_encode([
+            'ok' => false,
+            'error' => (string) ($result['error'] ?? 'Generování receptu selhalo.'),
+        ]);
+        exit;
+    }
+
+    echo json_encode(array_merge(['ok' => true], $result), JSON_UNESCAPED_UNICODE);
     exit;
 }));
 
