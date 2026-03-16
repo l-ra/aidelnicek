@@ -284,6 +284,34 @@ body {
     color: rgba(255, 255, 255, 0.9);
 }
 
+.nav-llm-jobs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.12rem 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 999px;
+    color: var(--color-white);
+    font-size: 0.82rem;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-llm-jobs__count {
+    display: inline-block;
+    min-width: 1.4rem;
+    text-align: center;
+    font-weight: 700;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 0.02rem 0.35rem;
+    line-height: 1.2;
+}
+
+.nav-llm-jobs.is-active {
+    border-color: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.2);
+}
+
 .nav-logout {
     display: inline;
 }
@@ -1931,6 +1959,17 @@ body {
         font-weight: 500;
         font-size: 0.9rem;
         opacity: 0.75;
+    }
+
+    .nav-llm-jobs {
+        width: 100%;
+        justify-content: flex-start;
+        border: none;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0;
+        background: none;
+        padding: 0.65rem 0;
+        font-size: 1rem;
     }
 
     .nav-logout {

@@ -5,6 +5,7 @@
 document.addEventListener('DOMContentLoaded', function () {
     // ── Responsivní navigace: hamburger toggle ────────────────────────────────
     initNavToggle();
+    initRunningJobsIndicator();
 
     // ── M1/M2: Toggle zobrazení/skrytí hesla ─────────────────────────────────
     document.querySelectorAll('.password-toggle-btn').forEach(function (btn) {
@@ -83,6 +84,65 @@ function initNavToggle() {
         if (e.key === 'Escape' && nav.classList.contains('is-open')) {
             closeNav();
             toggle.focus();
+        }
+    });
+}
+
+/**
+ * Polling indicator of currently running LLM generation jobs.
+ * Header count is refreshed every 5 seconds.
+ */
+function initRunningJobsIndicator() {
+    var indicator = document.getElementById('llm-jobs-indicator');
+    if (!indicator) { return; }
+
+    var countEl = indicator.querySelector('.nav-llm-jobs__count');
+    var pollUrl = indicator.getAttribute('data-poll-url') || '/llm/jobs-running-count';
+    var timerId = null;
+
+    function renderCount(rawCount) {
+        var parsed = parseInt(rawCount, 10);
+        var count  = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+
+        if (countEl) {
+            countEl.textContent = String(count);
+        }
+
+        indicator.classList.toggle('is-active', count > 0);
+        indicator.setAttribute('aria-label', 'Rozpracované LLM joby: ' + count);
+        indicator.setAttribute('title', 'Rozpracované LLM joby: ' + count);
+    }
+
+    function poll() {
+        fetch(pollUrl, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        })
+            .then(function (res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+            })
+            .then(function (json) {
+                if (!json || json.ok !== true) { return; }
+                renderCount(json.count);
+            })
+            .catch(function () {
+                // Tichý fail: indikátor zůstane na poslední známé hodnotě.
+            });
+    }
+
+    renderCount(0);
+    poll();
+    timerId = setInterval(poll, 5000);
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) {
+            poll();
+        }
+    });
+
+    window.addEventListener('beforeunload', function () {
+        if (timerId !== null) {
+            clearInterval(timerId);
         }
     });
 }

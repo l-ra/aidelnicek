@@ -727,6 +727,26 @@ $router->get('/admin/llm-stream', function () {
     exit;
 });
 
+$router->get('/llm/jobs-running-count', function () {
+    Auth::requireLogin();
+
+    header('Content-Type: application/json');
+
+    try {
+        $stmt = Database::get()->query(
+            "SELECT COUNT(*) AS cnt FROM generation_jobs WHERE status IN ('pending', 'running')"
+        );
+        $row   = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
+        $count = $row !== false ? (int) ($row['cnt'] ?? 0) : 0;
+
+        echo json_encode(['ok' => true, 'count' => $count]);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'count' => 0]);
+    }
+
+    exit;
+});
+
 // ── M3: Jídelníček ────────────────────────────────────────────────────────────
 
 $router->get('/plan', function () {
