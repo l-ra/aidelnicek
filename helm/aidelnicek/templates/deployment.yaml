@@ -48,6 +48,20 @@ spec:
             - name: data
               mountPath: /var/www/html/data
 
+        - name: llm-projector
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["php", "/var/www/html/bin/generation-projector.php"]
+          envFrom:
+            - secretRef:
+                name: {{ include "aidelnicek.fullname" . }}-llm
+                optional: true
+          resources:
+            {{- toYaml .Values.projector.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/www/html/data
+
         - name: llm-worker
           image: "{{ .Values.llmWorker.image.repository }}:{{ .Values.llmWorker.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.llmWorker.image.pullPolicy }}

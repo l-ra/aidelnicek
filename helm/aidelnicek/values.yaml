@@ -18,6 +18,15 @@ llmWorker:
       cpu: 500m
       memory: 256Mi
 
+projector:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
 imagePullSecrets: []
 
 nameOverride: ""

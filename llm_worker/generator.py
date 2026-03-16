@@ -1,13 +1,11 @@
 """
 Async LLM generation with OpenAI streaming.
 
-Streams response chunks into the generation_jobs table so the PHP SSE endpoint
-can forward them to the browser in near real-time.
+Streams chunks into generation_job_chunks and stores final output in
+generation_job_outputs. Domain projections are handled in PHP.
 """
 
-import json
 import os
-import re
 import time
 from datetime import datetime, timezone
 
@@ -15,12 +13,11 @@ from openai import AsyncOpenAI
 
 from database import (
     append_chunk,
-    create_llm_proposal,
     mark_done,
     mark_error,
     mark_running,
     open_db,
-    seed_meal_plans,
+    upsert_output,
 )
 from logger import log_llm_call
 
@@ -32,42 +29,6 @@ def _build_client() -> AsyncOpenAI:
     )
 
 
-def _parse_response(text: str) -> list:
-    """
-    Extract and parse the JSON object from the LLM response.
-    Mirrors the logic in PHP MealGenerator::parseResponse().
-    """
-    clean = text.strip()
-
-    # Strip markdown code fences if present
-    if clean.startswith("```"):
-        clean = re.sub(r"^```[a-z]*\n?", "", clean, flags=re.IGNORECASE)
-        clean = re.sub(r"```\s*$", "", clean)
-        clean = clean.strip()
-
-    start = clean.find("{")
-    end = clean.rfind("}")
-    if start == -1 or end == -1:
-        raise ValueError("Odpověď neobsahuje JSON objekt.")
-
-    clean = clean[start : end + 1]
-
-    try:
-        data = json.loads(clean)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"JSON parse chyba: {exc}") from exc
-
-    if "days" not in data or not isinstance(data["days"], list):
-        raise ValueError('Chybí klíč "days" v JSON odpovědi.')
-
-    if len(data["days"]) < 7:
-        raise ValueError(
-            f"Odpověď obsahuje pouze {len(data['days'])} dní místo 7."
-        )
-
-    return data["days"]
-
-
 async def stream_and_store(
     job_id: int,
     user_id: int,
@@ -77,13 +38,12 @@ async def stream_and_store(
     model: str,
     temperature: float,
     max_completion_tokens: int,
-    force: bool,
-    shared_user_profiles: list[dict] | None = None,
 ) -> None:
     """
-    Background async task: stream from OpenAI, write chunks to DB, then store meal plans.
+    Background async task: stream from OpenAI, write chunks + final output to DB.
     Logs the full call to the per-day LLM log SQLite file.
     """
+    _ = week_id
     conn = await open_db()
 
     request_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -133,33 +93,16 @@ async def stream_and_store(
                 f"Zvyšte hodnotu env proměnné LLM_MAX_COMPLETION_TOKENS."
             )
 
-        days = _parse_response(accumulated)
-        _, proposal_meal_map = await create_llm_proposal(
+        await upsert_output(
             conn=conn,
-            week_id=week_id,
-            reference_user_id=user_id,
-            generation_job_id=job_id,
+            job_id=job_id,
+            provider="openai",
             model=model,
-            days=days,
+            raw_text=accumulated,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            duration_ms=int((time.monotonic() - start_ts) * 1000),
         )
-
-        profiles = shared_user_profiles or []
-        if profiles:
-            for profile in profiles:
-                target_user_id = int(profile.get("user_id", 0))
-                if target_user_id <= 0:
-                    continue
-                portion_factor = float(profile.get("portion_factor", 1.0))
-                await seed_meal_plans(
-                    conn,
-                    target_user_id,
-                    week_id,
-                    proposal_meal_map,
-                    force,
-                    portion_factor=portion_factor,
-                )
-        else:
-            await seed_meal_plans(conn, user_id, week_id, proposal_meal_map, force)
         await mark_done(conn, job_id)
 
     except Exception as exc:  # noqa: BLE001

@@ -22,14 +22,6 @@ class MealGenerator
     private const MAX_PORTION_FACTOR = 1.80;
 
     /**
-     * Vrátí URL Python LLM workeru z env proměnné LLM_WORKER_URL (výchozí: http://localhost:8001).
-     */
-    private static function workerBaseUrl(): string
-    {
-        return rtrim(getenv('LLM_WORKER_URL') ?: 'http://localhost:8001', '/');
-    }
-
-    /**
      * Spustí generování jídelníčku přes LLM worker a vrátí job_id.
      * Volající je zodpovědný za polling výsledku (nebo ignorování — fire-and-forget).
      *
@@ -118,37 +110,22 @@ class MealGenerator
         if (!empty($sharedProfiles)) {
             $payloadData['shared_user_profiles'] = $sharedProfiles;
         }
-
-        $payload = json_encode($payloadData, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-
-        $ch = curl_init(self::workerBaseUrl() . '/generate');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_TIMEOUT        => 5,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        return GenerationJobService::startJob([
+            'user_id' => $userId,
+            'week_id' => $weekId,
+            'job_type' => 'mealplan_generate',
+            'mode' => 'async',
+            'system_prompt' => $systemPrompt,
+            'user_prompt' => $userPrompt,
+            'model' => (string) $payloadData['model'],
+            'temperature' => (float) $payloadData['temperature'],
+            'max_completion_tokens' => (int) $payloadData['max_completion_tokens'],
+            'input_payload' => [
+                'force' => (bool) $force,
+                'reference_user_id' => $userId,
+                'shared_user_profiles' => $sharedProfiles,
+            ],
         ]);
-        $body     = curl_exec($ch);
-        $errno    = curl_errno($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
-            $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}";
-            error_log("MealGenerator::submitGenerationJob: LLM worker nedostupný: {$detail}");
-            return 0;
-        }
-
-        try {
-            $decoded = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
-            $jobId   = (int) ($decoded['job_id'] ?? 0);
-        } catch (\Throwable $e) {
-            error_log("MealGenerator::submitGenerationJob: Neplatná odpověď workeru: " . $e->getMessage());
-            return 0;
-        }
-
-        return $jobId;
     }
 
     /**
@@ -291,33 +268,7 @@ class MealGenerator
      */
     public static function waitForJob(int $jobId, int $maxWaitSec = 600): bool
     {
-        $db       = Database::get();
-        $stmt     = $db->prepare('SELECT status, error_message FROM generation_jobs WHERE id = ?');
-        $deadline = time() + $maxWaitSec;
-
-        while (time() < $deadline) {
-            $stmt->execute([$jobId]);
-            $job = $stmt->fetch();
-
-            if ($job === false) {
-                error_log("MealGenerator::waitForJob: job #{$jobId} nenalezen");
-                return false;
-            }
-
-            if ($job['status'] === 'done') {
-                return true;
-            }
-
-            if ($job['status'] === 'error') {
-                error_log("MealGenerator::waitForJob: job #{$jobId} selhal: " . ($job['error_message'] ?? ''));
-                return false;
-            }
-
-            sleep(2);
-        }
-
-        error_log("MealGenerator::waitForJob: job #{$jobId} vypršel po {$maxWaitSec}s");
-        return false;
+        return GenerationJobService::waitForCompletion($jobId, $maxWaitSec, true);
     }
 
     /**
