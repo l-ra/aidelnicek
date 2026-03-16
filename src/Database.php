@@ -288,7 +288,16 @@ class Database
             $stmt = $db->prepare('SELECT 1 FROM migrations WHERE name = ?');
             $stmt->execute([$name]);
             if ($stmt->fetch() === false) {
-                $db->exec($sql);
+                try {
+                    $db->exec($sql);
+                } catch (\Throwable $e) {
+                    $message = mb_strtolower($e->getMessage());
+                    // Worker může vytvořit novější schéma dříve než PHP migrace.
+                    // V takovém případě je "duplicate column name" bezpečný no-op.
+                    if (!str_contains($message, 'duplicate column name')) {
+                        throw $e;
+                    }
+                }
                 $db->prepare('INSERT INTO migrations (name) VALUES (?)')->execute([$name]);
             }
         }
