@@ -76,13 +76,30 @@ s odkazem na jídelníček na následující den.
 ## 5. Nákupní seznam
 
 - **Jeden sdílený seznam** pro celou domácnost.
-- Automaticky se generuje z jídelníčků všech uživatelů na daný týden.
+- Data jsou v databázi vždy oddělená podle `week_id` (tabulka `shopping_list_items`).
+- Automaticky se generuje z jídelníčků všech uživatelů pro **konkrétní týden**.
 - Položky: název, množství, jednotka, kategorie (volitelně).
 - Interakce:
   - **Odškrtnutí** položky jako nakoupené (viditelné všem uživatelům).
   - **Ruční přidání** položky.
   - **Odebrání** položky.
 - Agregace: pokud více jídelníčků vyžaduje stejnou ingredienci, množství se sčítají.
+
+### 5.1 Co přesně se agreguje
+
+- Agregace probíhá pouze **uvnitř jednoho týdne**.
+- Zdroj jsou vybraná jídla (`meal_plans`) všech uživatelů:
+  - preferuje se varianta `is_chosen = 1`,
+  - když uživatel v daném slotu nic nevybral, použije se fallback `alternative = 1`.
+- Ingredience se deduplikují podle klíče `lowercase(name) + "|" + lowercase(unit)`.
+- U shodných dvojic `name + unit` se sčítá `quantity`.
+
+### 5.2 Proč v DB vidíš dva týdny, ale v UI jen jeden seznam
+
+- V DB je normální mít položky pro více týdnů (historie i budoucí týdny).
+- Obrazovka `/shopping` ale záměrně načítá jen **aktuální týden** (`MealPlan::getOrCreateCurrentWeek()`).
+- Proto UI ukazuje jeden seznam; není to konsolidace napříč týdny.
+- Konsolidace znamená: „sloučit položky všech uživatelů pro stejný týden“, ne „sloučit všechny týdny dohromady“.
 
 ---
 
