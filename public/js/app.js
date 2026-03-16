@@ -320,6 +320,8 @@ function attachEatenHandler(cb) {
  */
 function initMealRecipeButtons() {
     document.querySelectorAll('.meal-recipe-btn').forEach(function (btn) {
+        setRecipeButtonIdleLabel(btn);
+
         btn.addEventListener('click', function () {
             var planId = this.getAttribute('data-plan-id');
             var panel = this.parentElement ? this.parentElement.querySelector('.meal-recipe-panel') : null;
@@ -340,7 +342,7 @@ function initMealRecipeButtons() {
                     this.setAttribute('aria-expanded', 'true');
                 } else {
                     panel.setAttribute('hidden', 'hidden');
-                    this.textContent = 'Zobrazit recept';
+                    this.textContent = 'Zobraz recept';
                     this.setAttribute('aria-expanded', 'false');
                 }
                 return;
@@ -348,46 +350,114 @@ function initMealRecipeButtons() {
 
             this.setAttribute('data-loading', '1');
             this.disabled = true;
-            this.textContent = 'Generuji recept...';
+            this.textContent = 'Připravuji...';
             this.setAttribute('aria-expanded', 'false');
             panel.setAttribute('hidden', 'hidden');
 
             postAjax('/plan/recipe', { plan_id: planId })
                 .then(function (json) {
-                    if (!json.ok || !json.recipe) {
+                    if (!json.ok) {
                         showNetworkError();
+                        resetRecipeButtonAfterFailure(btn);
                         return;
                     }
 
-                    recipeTextEl.textContent = json.recipe;
-                    panel.removeAttribute('hidden');
-                    btn.setAttribute('data-loaded', '1');
-                    btn.textContent = 'Skrýt recept';
-                    btn.setAttribute('aria-expanded', 'true');
-
-                    if (metaEl) {
-                        var note = json.was_generated
-                            ? 'Recept byl právě vygenerován přes AI a uložen.'
-                            : 'Recept je načten ze sdílené databáze.';
-                        if (json.shared_across_users === true) {
-                            note += ' Sdílený i pro ostatní uživatele se stejným návrhem jídla.';
-                        }
-                        metaEl.textContent = note;
-                        metaEl.removeAttribute('hidden');
+                    if (json.status === 'ready' && json.recipe) {
+                        applyRecipeReadyState(btn, panel, recipeTextEl, metaEl, json);
+                        return;
                     }
+
+                    if (json.status === 'generating') {
+                        btn.textContent = 'Generuji recept...';
+                        var jobId = json.job_id ? String(json.job_id) : '';
+                        pollRecipeStatus(planId, jobId, btn, panel, recipeTextEl, metaEl, 0);
+                        return;
+                    }
+
+                    showNetworkError();
+                    resetRecipeButtonAfterFailure(btn);
                 })
                 .catch(function () {
                     showNetworkError();
-                })
-                .finally(function () {
-                    btn.removeAttribute('data-loading');
-                    btn.disabled = false;
-                    if (btn.getAttribute('data-loaded') !== '1') {
-                        btn.textContent = 'Zobrazit recept';
-                    }
+                    resetRecipeButtonAfterFailure(btn);
                 });
         });
     });
+}
+
+function pollRecipeStatus(planId, jobId, btn, panel, recipeTextEl, metaEl, attempt) {
+    var pollUrl = '/plan/recipe-status?plan_id=' + encodeURIComponent(planId);
+    if (jobId) {
+        pollUrl += '&job_id=' + encodeURIComponent(jobId);
+    }
+
+    fetch(pollUrl, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    })
+        .then(function (res) {
+            if (!res.ok) { throw new Error('HTTP ' + res.status); }
+            return res.json();
+        })
+        .then(function (json) {
+            if (!json || json.ok !== true) {
+                throw new Error('invalid response');
+            }
+
+            if (json.status === 'ready' && json.recipe) {
+                applyRecipeReadyState(btn, panel, recipeTextEl, metaEl, json);
+                return;
+            }
+
+            if (json.status === 'generating') {
+                var delayMs = attempt < 3 ? 1500 : 2500;
+                setTimeout(function () {
+                    pollRecipeStatus(planId, jobId, btn, panel, recipeTextEl, metaEl, attempt + 1);
+                }, delayMs);
+                return;
+            }
+
+            throw new Error('unexpected status');
+        })
+        .catch(function () {
+            showNetworkError();
+            resetRecipeButtonAfterFailure(btn);
+        });
+}
+
+function applyRecipeReadyState(btn, panel, recipeTextEl, metaEl, json) {
+    recipeTextEl.textContent = json.recipe;
+    panel.removeAttribute('hidden');
+    btn.setAttribute('data-loaded', '1');
+    btn.setAttribute('data-has-recipe', '1');
+    btn.removeAttribute('data-loading');
+    btn.disabled = false;
+    btn.textContent = 'Skrýt recept';
+    btn.setAttribute('aria-expanded', 'true');
+
+    if (metaEl) {
+        var note = json.was_generated
+            ? 'Recept byl právě vygenerován přes AI a uložen.'
+            : 'Recept je načten ze sdílené databáze.';
+        if (json.shared_across_users === true) {
+            note += ' Sdílený i pro ostatní uživatele se stejným návrhem jídla.';
+        }
+        metaEl.textContent = note;
+        metaEl.removeAttribute('hidden');
+    }
+}
+
+function setRecipeButtonIdleLabel(btn) {
+    if (!btn) { return; }
+    var hasRecipe = btn.getAttribute('data-has-recipe') === '1';
+    btn.textContent = hasRecipe ? 'Zobraz recept' : 'Generuj recept';
+    btn.setAttribute('aria-expanded', 'false');
+}
+
+function resetRecipeButtonAfterFailure(btn) {
+    if (!btn) { return; }
+    btn.removeAttribute('data-loading');
+    btn.disabled = false;
+    setRecipeButtonIdleLabel(btn);
 }
 
 // ── M4: Shopping list ────────────────────────────────────────────────────────

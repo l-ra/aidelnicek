@@ -263,8 +263,19 @@ class MealPlan
     public static function getDayPlan(int $userId, int $weekId, int $dayOfWeek): array
     {
         $stmt = Database::get()->prepare(
-            'SELECT * FROM meal_plans
-             WHERE user_id = ? AND week_id = ? AND day_of_week = ?
+            'SELECT mp.*,
+                    CASE
+                        WHEN mp.proposal_meal_id IS NOT NULL
+                             AND EXISTS (
+                                SELECT 1
+                                FROM meal_recipes mr
+                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                             )
+                        THEN 1
+                        ELSE 0
+                    END AS has_recipe
+             FROM meal_plans mp
+             WHERE mp.user_id = ? AND mp.week_id = ? AND mp.day_of_week = ?
              ORDER BY alternative ASC'
         );
         $stmt->execute([$userId, $weekId, $dayOfWeek]);
@@ -283,6 +294,97 @@ class MealPlan
         }
 
         return $plan;
+    }
+
+    /**
+     * Zajistí, že každý slot (den + typ jídla) má přesně jednu zvolenou alternativu.
+     * Pokud je stav nevalidní (0 nebo více zvolených), nastaví se výchozí alternativa 1.
+     */
+    public static function ensureSingleChosenPerSlot(int $userId, int $weekId): void
+    {
+        Database::get()->prepare(
+            'UPDATE meal_plans
+             SET is_chosen = CASE
+                                WHEN alternative = (
+                                    SELECT MIN(mp_alt.alternative)
+                                    FROM meal_plans mp_alt
+                                    WHERE mp_alt.user_id = meal_plans.user_id
+                                      AND mp_alt.week_id = meal_plans.week_id
+                                      AND mp_alt.day_of_week = meal_plans.day_of_week
+                                      AND mp_alt.meal_type = meal_plans.meal_type
+                                )
+                                THEN 1
+                                ELSE 0
+                             END
+             WHERE user_id = ? AND week_id = ?
+               AND EXISTS (
+                    SELECT 1
+                    FROM meal_plans mp_slot
+                    WHERE mp_slot.user_id = meal_plans.user_id
+                      AND mp_slot.week_id = meal_plans.week_id
+                      AND mp_slot.day_of_week = meal_plans.day_of_week
+                      AND mp_slot.meal_type = meal_plans.meal_type
+                    GROUP BY mp_slot.user_id, mp_slot.week_id, mp_slot.day_of_week, mp_slot.meal_type
+                    HAVING SUM(CASE WHEN mp_slot.is_chosen = 1 THEN 1 ELSE 0 END) <> 1
+               )'
+        )->execute([$userId, $weekId]);
+    }
+
+    /**
+     * Vrátí preference ostatních členů domácnosti pro daný den.
+     *
+     * Struktura:
+     * [
+     *   meal_type => ['alt1' => ['Jméno'], 'alt2' => ['Jméno']]
+     * ]
+     */
+    public static function getHouseholdSelectionsForDay(int $currentUserId, int $weekId, int $dayOfWeek): array
+    {
+        $result = [];
+        foreach (self::MEAL_TYPE_ORDER as $type) {
+            $result[$type] = ['alt1' => [], 'alt2' => []];
+        }
+
+        $stmt = Database::get()->prepare(
+            'SELECT mp.meal_type, mp.alternative, u.name AS user_name
+             FROM meal_plans mp
+             JOIN users u ON u.id = mp.user_id
+             WHERE mp.week_id = ? AND mp.day_of_week = ? AND mp.user_id <> ?
+               AND (
+                    mp.is_chosen = 1
+                    OR (
+                        mp.alternative = 1
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM meal_plans mp2
+                            WHERE mp2.week_id = mp.week_id
+                              AND mp2.user_id = mp.user_id
+                              AND mp2.day_of_week = mp.day_of_week
+                              AND mp2.meal_type = mp.meal_type
+                              AND mp2.is_chosen = 1
+                        )
+                    )
+               )
+             ORDER BY mp.meal_type ASC, mp.alternative ASC, u.name COLLATE NOCASE ASC'
+        );
+        $stmt->execute([$weekId, $dayOfWeek, $currentUserId]);
+
+        foreach ($stmt->fetchAll() as $row) {
+            $mealType = (string) ($row['meal_type'] ?? '');
+            $altKey = ((int) ($row['alternative'] ?? 0)) === 2 ? 'alt2' : 'alt1';
+            if (!isset($result[$mealType][$altKey])) {
+                continue;
+            }
+
+            $name = trim((string) ($row['user_name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+
+            $result[$mealType][$altKey][] = $name;
+        }
+
+        return $result;
     }
 
     public static function getWeekPlan(int $userId, int $weekId): array
@@ -392,8 +494,8 @@ class MealPlan
         $db   = Database::get();
         $stmt = $db->prepare(
             'INSERT OR IGNORE INTO meal_plans
-                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, is_chosen)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
 
         for ($day = 1; $day <= 7; $day++) {
@@ -404,7 +506,17 @@ class MealPlan
 
                 foreach ([1, 2] as $alt) {
                     [$name, $desc, $ingredients] = $pair[$alt - 1];
-                    $stmt->execute([$userId, $weekId, $day, $type, $alt, $name, $desc, $ingredients]);
+                    $stmt->execute([
+                        $userId,
+                        $weekId,
+                        $day,
+                        $type,
+                        $alt,
+                        $name,
+                        $desc,
+                        $ingredients,
+                        $alt === 1 ? 1 : 0,
+                    ]);
                     MealHistory::recordOffer($userId, $name);
                 }
             }

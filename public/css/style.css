@@ -556,6 +556,31 @@ body {
     color: var(--color-text-muted);
 }
 
+.alt-household-pref {
+    margin: 0 0 0.45rem;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+}
+
+.alt-household-pref__label {
+    margin-right: 0.35rem;
+    font-weight: 600;
+}
+
+.alt-household-pref__users {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.alt-household-pref__user {
+    display: inline-block;
+    background: #eef2f7;
+    border-radius: 999px;
+    padding: 0.08rem 0.42rem;
+    color: #4b5563;
+}
+
 /* ── Meal recipe panel ─────────────────────────────────────────────────────── */
 .meal-recipe-btn {
     margin-top: 0.35rem;
