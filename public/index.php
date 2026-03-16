@@ -67,7 +67,7 @@ $router->post('/login', $requireCsrf('/login?error=csrf', function () {
     Auth::login((int) $user['id'], $rememberMe);
     header('Location: /');
     exit;
-});
+}));
 
 $router->get('/register', function () use ($projectRoot) {
     if (Auth::isLoggedIn()) {
