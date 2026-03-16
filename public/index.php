@@ -67,7 +67,7 @@ $router->post('/login', $requireCsrf('/login?error=csrf', function () {
     Auth::login((int) $user['id'], $rememberMe);
     header('Location: /');
     exit;
-});
+}));
 
 $router->get('/register', function () use ($projectRoot) {
     if (Auth::isLoggedIn()) {
@@ -984,7 +984,7 @@ $router->get('/plan/recipe-status', function () {
 
     echo json_encode(array_merge(['ok' => true], $result), JSON_UNESCAPED_UNICODE);
     exit;
-}));
+});
 
 // ── M5: Přegenerování jídelníčku (podmíněno AI_REGEN_UI_ENABLED) ─────────────
 
