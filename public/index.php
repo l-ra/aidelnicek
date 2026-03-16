@@ -984,7 +984,7 @@ $router->get('/plan/recipe-status', function () {
 
     echo json_encode(array_merge(['ok' => true], $result), JSON_UNESCAPED_UNICODE);
     exit;
-}));
+});
 
 // ── M5: Přegenerování jídelníčku (podmíněno AI_REGEN_UI_ENABLED) ─────────────
 
