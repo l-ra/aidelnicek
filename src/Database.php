@@ -218,6 +218,59 @@ class Database
             CREATE INDEX IF NOT EXISTS idx_meal_plans_proposal_meal_id
                 ON meal_plans(proposal_meal_id);
             SQL,
+            // M10: sjednocená LLM job orchestrace + chunk/output tabulky
+            <<<'SQL'
+            ALTER TABLE generation_jobs ADD COLUMN job_type TEXT NOT NULL DEFAULT 'mealplan_generate';
+            SQL,
+            <<<'SQL'
+            ALTER TABLE generation_jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'async';
+            SQL,
+            <<<'SQL'
+            ALTER TABLE generation_jobs ADD COLUMN input_payload TEXT NOT NULL DEFAULT '{}';
+            SQL,
+            <<<'SQL'
+            ALTER TABLE generation_jobs ADD COLUMN projection_status TEXT NOT NULL DEFAULT 'pending';
+            SQL,
+            <<<'SQL'
+            ALTER TABLE generation_jobs ADD COLUMN projection_error_message TEXT;
+            SQL,
+            <<<'SQL'
+            ALTER TABLE generation_jobs ADD COLUMN projection_started_at DATETIME;
+            SQL,
+            <<<'SQL'
+            ALTER TABLE generation_jobs ADD COLUMN projection_finished_at DATETIME;
+            SQL,
+            <<<'SQL'
+            CREATE TABLE IF NOT EXISTS generation_job_chunks (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_id     INTEGER NOT NULL REFERENCES generation_jobs(id) ON DELETE CASCADE,
+                seq_no     INTEGER NOT NULL,
+                chunk_text TEXT    NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(job_id, seq_no)
+            );
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_generation_job_chunks_job_seq
+                ON generation_job_chunks(job_id, seq_no);
+            SQL,
+            <<<'SQL'
+            CREATE TABLE IF NOT EXISTS generation_job_outputs (
+                job_id       INTEGER PRIMARY KEY REFERENCES generation_jobs(id) ON DELETE CASCADE,
+                provider     TEXT    NOT NULL DEFAULT 'openai',
+                model        TEXT    NOT NULL,
+                raw_text     TEXT    NOT NULL,
+                parsed_json  TEXT,
+                tokens_in    INTEGER,
+                tokens_out   INTEGER,
+                duration_ms  INTEGER,
+                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_generation_jobs_status_projection
+                ON generation_jobs(status, projection_status);
+            SQL,
         ];
 
         $db = self::$connection;
@@ -235,7 +288,16 @@ class Database
             $stmt = $db->prepare('SELECT 1 FROM migrations WHERE name = ?');
             $stmt->execute([$name]);
             if ($stmt->fetch() === false) {
-                $db->exec($sql);
+                try {
+                    $db->exec($sql);
+                } catch (\Throwable $e) {
+                    $message = mb_strtolower($e->getMessage());
+                    // Worker může vytvořit novější schéma dříve než PHP migrace.
+                    // V takovém případě je "duplicate column name" bezpečný no-op.
+                    if (!str_contains($message, 'duplicate column name')) {
+                        throw $e;
+                    }
+                }
                 $db->prepare('INSERT INTO migrations (name) VALUES (?)')->execute([$name]);
             }
         }

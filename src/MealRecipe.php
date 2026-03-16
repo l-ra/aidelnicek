@@ -191,49 +191,47 @@ class MealRecipe
         [$systemPrompt, $userPrompt] = self::buildRecipePrompts($plan);
 
         $model   = getenv('OPENAI_MODEL') ?: 'gpt-4o';
-        $payload = json_encode([
-            'system_prompt'         => $systemPrompt,
-            'user_prompt'           => $userPrompt,
-            'model'                 => $model,
-            'temperature'           => 0.3,
+        $jobId = GenerationJobService::startJob([
+            'user_id' => isset($plan['user_id']) ? (int) $plan['user_id'] : 0,
+            'week_id' => isset($plan['week_id']) ? (int) $plan['week_id'] : 0,
+            'job_type' => 'recipe_generate',
+            'mode' => 'sync',
+            'system_prompt' => $systemPrompt,
+            'user_prompt' => $userPrompt,
+            'model' => $model,
+            'temperature' => 0.3,
             'max_completion_tokens' => 2200,
-            'user_id'               => isset($plan['user_id']) ? (int) $plan['user_id'] : null,
-        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-
-        $workerUrl = rtrim(getenv('LLM_WORKER_URL') ?: 'http://localhost:8001', '/');
-        $ch = curl_init($workerUrl . '/complete');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_TIMEOUT        => 180,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            'input_payload' => [
+                'plan_id' => isset($plan['id']) ? (int) $plan['id'] : null,
+                'proposal_meal_id' => isset($plan['proposal_meal_id']) ? (int) $plan['proposal_meal_id'] : null,
+            ],
         ]);
-        $body     = curl_exec($ch);
-        $errno    = curl_errno($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
-        if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
-            $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}";
-            error_log("MealRecipe::generateRecipeViaWorker: LLM worker nedostupný: {$detail}");
+        if ($jobId <= 0) {
+            error_log('MealRecipe::generateRecipeViaWorker: job se nepodařilo spustit.');
             return null;
         }
 
-        try {
-            $decoded    = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
-            $recipeText = trim((string) ($decoded['response'] ?? ''));
-            if ($recipeText === '') {
-                return null;
-            }
-            return [
-                'recipe_text' => $recipeText,
-                'model'       => (string) ($decoded['model'] ?? $model),
-            ];
-        } catch (\Throwable $e) {
-            error_log('MealRecipe::generateRecipeViaWorker: Neplatná odpověď workeru: ' . $e->getMessage());
+        if (!GenerationJobService::waitForCompletion($jobId, 180, false)) {
+            error_log("MealRecipe::generateRecipeViaWorker: job #{$jobId} nedokončen.");
             return null;
         }
+
+        $output = GenerationJobService::getOutput($jobId);
+        if ($output === null) {
+            error_log("MealRecipe::generateRecipeViaWorker: chybí output jobu #{$jobId}.");
+            return null;
+        }
+
+        $recipeText = trim((string) ($output['raw_text'] ?? ''));
+        if ($recipeText === '') {
+            return null;
+        }
+
+        return [
+            'recipe_text' => $recipeText,
+            'model'       => (string) ($output['model'] ?? $model),
+        ];
     }
 
     private static function buildRecipePrompts(array $plan): array

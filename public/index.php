@@ -13,6 +13,7 @@ use Aidelnicek\MealGenerator;
 use Aidelnicek\MealHistory;
 use Aidelnicek\MealPlan;
 use Aidelnicek\MealRecipe;
+use Aidelnicek\GenerationJobService;
 use Aidelnicek\Router;
 use Aidelnicek\ShoppingList;
 use Aidelnicek\User;
@@ -446,42 +447,41 @@ $router->post('/admin/llm-test', function () use ($projectRoot) {
 
     header('Content-Type: application/json');
     try {
-        $workerUrl = rtrim(getenv('LLM_WORKER_URL') ?: 'http://localhost:8001', '/');
         $model     = getenv('OPENAI_MODEL') ?: 'gpt-4o';
-        $payload   = json_encode([
+        $jobId = GenerationJobService::startJob([
+            'user_id'               => (int) $user['id'],
+            'week_id'               => 0,
+            'job_type'              => 'llm_test',
+            'mode'                  => 'sync',
             'system_prompt'         => $systemPrompt,
             'user_prompt'           => $userPrompt,
             'model'                 => $model,
             'temperature'           => max(0.0, min(2.0, $temperature)),
             'max_completion_tokens' => max(64, min(32000, $maxTokens)),
-            'user_id'               => (int) $user['id'],
-        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-
-        $ch = curl_init($workerUrl . '/complete');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $payload,
-            CURLOPT_TIMEOUT        => 120,
-            CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+            'input_payload'         => ['source' => 'admin_llm_test'],
         ]);
-        $body     = curl_exec($ch);
-        $errno    = curl_errno($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
 
-        if ($errno !== 0 || $httpCode < 200 || $httpCode >= 300) {
-            $detail = $errno !== 0 ? curl_strerror($errno) : "HTTP {$httpCode}: " . substr((string) $body, 0, 200);
-            echo json_encode(['ok' => false, 'error' => "LLM worker nedostupný: {$detail}"]);
+        if ($jobId <= 0) {
+            echo json_encode(['ok' => false, 'error' => 'LLM job se nepodařilo spustit.']);
             exit;
         }
 
-        $workerResponse = json_decode((string) $body, true, 512, JSON_THROW_ON_ERROR);
+        if (!GenerationJobService::waitForCompletion($jobId, 120, false)) {
+            echo json_encode(['ok' => false, 'error' => "LLM job #{$jobId} nedokončen."]);
+            exit;
+        }
+
+        $output = GenerationJobService::getOutput($jobId);
+        if ($output === null) {
+            echo json_encode(['ok' => false, 'error' => "LLM job #{$jobId} nemá output."]);
+            exit;
+        }
+
         echo json_encode([
             'ok'       => true,
-            'response' => $workerResponse['response'] ?? '',
-            'model'    => $workerResponse['model']    ?? $model,
-            'provider' => $workerResponse['provider'] ?? 'openai',
+            'response' => (string) ($output['raw_text'] ?? ''),
+            'model'    => (string) ($output['model'] ?? $model),
+            'provider' => (string) ($output['provider'] ?? 'openai'),
         ], JSON_UNESCAPED_UNICODE);
     } catch (\Throwable $e) {
         echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
@@ -670,15 +670,16 @@ $router->get('/admin/llm-stream', function () {
         exit;
     }
 
-    $lastChunkCount = 0;
-    $lastTextLen    = 0;
+    $lastSeq        = 0;
     $maxWaitSec     = 600;
     $startTime      = time();
     $keepaliveTick  = 0;
 
     while (!connection_aborted() && (time() - $startTime) < $maxWaitSec) {
         $stmt = $db->prepare(
-            'SELECT status, progress_text, chunk_count, error_message FROM generation_jobs WHERE id = ?'
+            'SELECT status, chunk_count, error_message, job_type, projection_status, projection_error_message
+             FROM generation_jobs
+             WHERE id = ?'
         );
         $stmt->execute([$jobId]);
         $job = $stmt->fetch();
@@ -689,25 +690,51 @@ $router->get('/admin/llm-stream', function () {
             break;
         }
 
-        $currentCount = (int) $job['chunk_count'];
-
-        if ($currentCount > $lastChunkCount) {
-            $fullText = (string) $job['progress_text'];
-            $newText  = substr($fullText, $lastTextLen);
-            if ($newText !== '') {
+        $chunkStmt = $db->prepare(
+            'SELECT seq_no, chunk_text
+             FROM generation_job_chunks
+             WHERE job_id = ? AND seq_no > ?
+             ORDER BY seq_no ASC
+             LIMIT 200'
+        );
+        $chunkStmt->execute([$jobId, $lastSeq]);
+        $chunks = $chunkStmt->fetchAll();
+        if (!empty($chunks)) {
+            foreach ($chunks as $chunkRow) {
+                $text = (string) ($chunkRow['chunk_text'] ?? '');
+                $seq  = (int) ($chunkRow['seq_no'] ?? 0);
+                if ($text === '' || $seq <= $lastSeq) {
+                    continue;
+                }
                 echo "data: " . json_encode(
-                    ['type' => 'chunk', 'text' => $newText, 'count' => $currentCount],
+                    ['type' => 'chunk', 'text' => $text, 'count' => $seq],
                     JSON_UNESCAPED_UNICODE
                 ) . "\n\n";
                 flush();
-                $lastChunkCount = $currentCount;
-                $lastTextLen    = strlen($fullText);
+                $lastSeq = $seq;
             }
         }
 
-        if (in_array($job['status'], ['done', 'error'], true)) {
+        if ($job['status'] === 'done' && $job['job_type'] === 'mealplan_generate' && $job['projection_status'] === 'pending') {
+            \Aidelnicek\GenerationJobProjector::projectJob($jobId);
+            $stmt->execute([$jobId]);
+            $job = $stmt->fetch();
+        }
+
+        if (
+            $job['status'] === 'error'
+            || ($job['status'] === 'done' && $job['projection_status'] === 'error')
+            || (
+                $job['status'] === 'done'
+                && ($job['job_type'] !== 'mealplan_generate' || $job['projection_status'] === 'done')
+            )
+        ) {
+            $doneStatus = ($job['status'] === 'error' || $job['projection_status'] === 'error') ? 'error' : 'done';
+            $errorText = $doneStatus === 'error'
+                ? ((string) ($job['projection_error_message'] ?: $job['error_message'] ?: 'Neznámá chyba'))
+                : null;
             echo "data: " . json_encode(
-                ['type' => 'done', 'status' => $job['status'], 'error' => $job['error_message']],
+                ['type' => 'done', 'status' => $doneStatus, 'error' => $errorText],
                 JSON_UNESCAPED_UNICODE
             ) . "\n\n";
             flush();
@@ -734,7 +761,10 @@ $router->get('/llm/jobs-running-count', function () {
 
     try {
         $stmt = Database::get()->query(
-            "SELECT COUNT(*) AS cnt FROM generation_jobs WHERE status IN ('pending', 'running')"
+            "SELECT COUNT(*) AS cnt
+             FROM generation_jobs
+             WHERE status IN ('pending', 'running')
+                OR (job_type = 'mealplan_generate' AND status = 'done' AND projection_status IN ('pending', 'processing'))"
         );
         $row   = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
         $count = $row !== false ? (int) ($row['cnt'] ?? 0) : 0;
