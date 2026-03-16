@@ -30,6 +30,17 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
                     <?php if (!empty($currentUser['is_admin'])): ?>
                         <a href="/admin" class="nav-admin">Administrace</a>
                     <?php endif; ?>
+                    <span
+                        class="nav-llm-jobs"
+                        id="llm-jobs-indicator"
+                        data-poll-url="/llm/jobs-running-count"
+                        aria-live="polite"
+                        aria-label="Rozpracované LLM joby: 0"
+                        title="Rozpracované LLM joby: 0"
+                    >
+                        <span class="nav-llm-jobs__icon" aria-hidden="true">&#129302;</span>
+                        <span class="nav-llm-jobs__count">0</span>
+                    </span>
                     <span class="nav-user"><?= htmlspecialchars($currentUser['name']) ?></span>
                     <a href="/profile">Profil</a>
                     <form method="post" action="/logout" class="nav-logout">
