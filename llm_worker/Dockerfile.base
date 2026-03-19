@@ -1,0 +1,8 @@
+# Base image with dependencies only (no application code).
+# Rebuilt when requirements.txt or this file changes.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
