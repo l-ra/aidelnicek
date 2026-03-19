@@ -52,7 +52,7 @@ $router->get('/login', function () use ($projectRoot) {
 });
 
 $router->post('/login', $requireCsrf('/login?error=csrf', function () {
-    $email = trim($_POST['email'] ?? '');
+    $email = mb_strtolower(trim($_POST['email'] ?? ''));
     $password = $_POST['password'] ?? '';
     $rememberMe = !empty($_POST['remember_me'] ?? '');
     if ($email === '' || $password === '') {
@@ -97,7 +97,7 @@ $router->post('/register', $requireCsrf('/register?error=csrf', function () use 
 
     $data = [
         'name'          => trim($_POST['name'] ?? ''),
-        'email'         => $invite['email'],
+        'email'         => mb_strtolower($invite['email']),
         'password'      => $_POST['password'] ?? '',
         'gender'        => $_POST['gender'] ?? null,
         'age'           => $_POST['age'] ?? null,
@@ -1175,7 +1175,7 @@ $router->post('/admin/invite', $requireCsrf('/admin/invite?error=csrf', function
         exit;
     }
 
-    $email        = trim($_POST['email'] ?? '');
+    $email        = mb_strtolower(trim($_POST['email'] ?? ''));
     $validityHours = isset($_POST['validity_hours']) ? max(1, (int) $_POST['validity_hours']) : 168;
     $inviteErrors  = [];
 
