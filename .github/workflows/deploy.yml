@@ -18,9 +18,16 @@ on:
 env:
   REGISTRY: ghcr.io
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   ensure-base-images:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    permissions:
+      contents: read
+      packages: write
     uses: ./.github/workflows/build-base-images.yml
     with:
       force_rebuild: false
