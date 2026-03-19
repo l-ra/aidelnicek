@@ -16,6 +16,7 @@ use Aidelnicek\MealRecipe;
 use Aidelnicek\GenerationJobService;
 use Aidelnicek\Router;
 use Aidelnicek\ShoppingList;
+use Aidelnicek\ShoppingListExport;
 use Aidelnicek\User;
 
 Database::init($projectRoot);
@@ -1039,6 +1040,44 @@ $router->post('/plan/regenerate', $requireCsrf('/plan/week', function () {
 
 // ── M4: Nákupní seznam ────────────────────────────────────────────────────────
 
+$router->get('/shopping/export', function () {
+    $format = isset($_GET['format']) ? strtolower(trim($_GET['format'])) : 'csv';
+    if (!in_array($format, ['csv', 'json'], true)) {
+        $format = 'csv';
+    }
+
+    $weekId = null;
+    $token  = trim($_GET['token'] ?? '');
+
+    if ($token !== '') {
+        $valid = ShoppingListExport::validateExportToken($token);
+        if ($valid === null) {
+            http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Neplatný nebo prošlý odkaz ke stažení.';
+            exit;
+        }
+        $weekId = $valid['week_id'];
+    } else {
+        Auth::requireLogin();
+        $week   = MealPlan::getOrCreateCurrentWeek();
+        $weekId = (int) $week['id'];
+    }
+
+    $items = ShoppingListExport::getExportData($weekId);
+
+    if ($format === 'json') {
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="nakupni-seznam.json"');
+        echo ShoppingListExport::formatJson($items);
+    } else {
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="nakupni-seznam.csv"');
+        echo ShoppingListExport::formatCsv($items);
+    }
+    exit;
+});
+
 $router->get('/shopping', function () use ($projectRoot) {
     $user   = Auth::requireLogin();
     $userId = (int) $user['id'];
@@ -1048,6 +1087,11 @@ $router->get('/shopping', function () use ($projectRoot) {
 
     // Auto-generate shopping list if no auto-generated items exist yet
     ShoppingList::generateFromMealPlans($weekId);
+
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http')
+        . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $exportSignedUrlCsv  = $baseUrl . ShoppingListExport::getSignedExportUrl($weekId, 'csv');
+    $exportSignedUrlJson = $baseUrl . ShoppingListExport::getSignedExportUrl($weekId, 'json');
 
     require $projectRoot . '/templates/shopping_list.php';
 });

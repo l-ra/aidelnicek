@@ -914,6 +914,13 @@ body {
     font-size: 0.9rem;
 }
 
+.shopping-export-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
 .shopping-header__actions {
     display: flex;
     gap: 0.5rem;
