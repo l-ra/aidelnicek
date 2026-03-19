@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function () {
     initShoppingToggle();
     initShoppingRemove();
     initShoppingFilter();
+    initShoppingCopySignedLink();
 });
 
 /**
@@ -554,6 +555,47 @@ function initShoppingRemove() {
             })
             .catch(function () { showNetworkError(); });
     });
+}
+
+/**
+ * Handles the "Kopírovat odkaz ke stažení" button.
+ * Copies the signed CSV export URL to clipboard.
+ */
+function initShoppingCopySignedLink() {
+    document.querySelectorAll('.js-copy-signed-link').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var url = this.getAttribute('data-url-csv') || '';
+            if (!url) { return; }
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(function () {
+                    var orig = btn.textContent;
+                    btn.textContent = 'Odkaz zkopírován';
+                    setTimeout(function () { btn.textContent = orig; }, 2000);
+                }).catch(function () {
+                    fallbackCopy(url, btn);
+                });
+            } else {
+                fallbackCopy(url, btn);
+            }
+        });
+    });
+}
+
+function fallbackCopy(text, btn) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        var orig = btn.textContent;
+        btn.textContent = 'Odkaz zkopírován';
+        setTimeout(function () { btn.textContent = orig; }, 2000);
+    } catch (e) { /* ignore */ }
+    document.body.removeChild(ta);
 }
 
 /**

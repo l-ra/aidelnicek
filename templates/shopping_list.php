@@ -42,6 +42,18 @@ ob_start();
             <p class="shopping-week-label">Týden <?= (int) $week['week_number'] ?>/<?= (int) $week['year'] ?></p>
         </div>
         <div class="shopping-header__actions">
+            <?php if ($totalCount > 0): ?>
+                <div class="shopping-export-buttons">
+                    <a href="/shopping/export?format=csv" class="btn btn-secondary btn-sm">Stáhnout CSV</a>
+                    <a href="/shopping/export?format=json" class="btn btn-secondary btn-sm">Stáhnout JSON</a>
+                    <button type="button" class="btn btn-secondary btn-sm js-copy-signed-link"
+                            data-url-csv="<?= htmlspecialchars($exportSignedUrlCsv ?? '') ?>"
+                            data-url-json="<?= htmlspecialchars($exportSignedUrlJson ?? '') ?>"
+                            title="Odkaz platný 7 dní, použitelný bez přihlášení">
+                        Kopírovat odkaz ke stažení
+                    </button>
+                </div>
+            <?php endif; ?>
             <form method="post" action="/shopping/regenerate">
                 <?= Csrf::field() ?>
                 <button type="submit" class="btn btn-secondary btn-sm">Generovat znovu</button>
