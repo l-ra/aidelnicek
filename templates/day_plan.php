@@ -43,15 +43,6 @@ ob_start();
     <h1 class="plan-heading">
         <?= htmlspecialchars(MealPlan::getDayLabel($day)) ?>
         <span class="plan-heading__date"><?= $dayDate->format('j. n. Y') ?></span>
-        <?php if (in_array(getenv('AI_REGEN_UI_ENABLED'), ['true', '1', 'yes'], true)): ?>
-            <form method="post" action="/plan/regenerate" class="plan-regen-form">
-                <?= Csrf::field() ?>
-                <input type="hidden" name="week_id" value="<?= $weekId ?>">
-                <button type="submit" class="btn btn-secondary btn-sm plan-regen-btn">
-                    Přegenerovat AI
-                </button>
-            </form>
-        <?php endif; ?>
     </h1>
 
     <div class="meal-cards">
@@ -151,6 +142,9 @@ ob_start();
                             <div class="meal-recipe-panel" hidden>
                                 <p class="meal-recipe-meta" hidden></p>
                                 <pre class="meal-recipe-text"></pre>
+                                <a href="/plan/recipe/view?plan_id=<?= (int) $alt['id'] ?>"
+                                   target="_blank" rel="noopener"
+                                   class="meal-recipe-open-tab">Otevřít v nové záložce</a>
                             </div>
 
                             <?php if ($isChosen): ?>

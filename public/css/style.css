@@ -609,6 +609,42 @@ body {
     color: var(--color-text);
 }
 
+.meal-recipe-open-tab {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--color-primary);
+}
+
+.meal-recipe-open-tab:hover {
+    text-decoration: underline;
+}
+
+/* ── Recipe view (standalone page) ────────────────────────────────────────── */
+.recipe-view {
+    max-width: 720px;
+}
+
+.recipe-view__title {
+    margin: 0 0 0.75rem;
+    font-size: 1.5rem;
+}
+
+.recipe-view__back {
+    margin-bottom: 1rem;
+}
+
+.recipe-view__text {
+    margin: 1rem 0 0;
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: var(--radius);
+}
+
 /* ── Eaten checkbox ───────────────────────────────────────────────────────── */
 .eaten-checkbox {
     display: inline-flex;
@@ -1180,48 +1216,12 @@ body {
     color: var(--color-white);
 }
 
-/* ── M5: AI regenerace jídelníčku ─────────────────────────────────────────── */
-
 .week-plan__footer {
     display: flex;
     gap: 0.75rem;
     align-items: center;
     margin-top: 1.5rem;
     flex-wrap: wrap;
-}
-
-.week-plan__regen-form,
-.plan-regen-form {
-    display: inline-flex;
-    margin: 0;
-}
-
-.week-plan__regen-btn,
-.plan-regen-btn {
-    white-space: nowrap;
-}
-
-.plan-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.plan-regen-form {
-    margin-left: auto;
-}
-
-@media (max-width: 600px) {
-    .plan-regen-form {
-        margin-left: 0;
-        width: 100%;
-    }
-
-    .plan-regen-btn {
-        width: 100%;
-        justify-content: center;
-    }
 }
 
 /* ── Admin sekce ─────────────────────────────────────────────────────────────── */
