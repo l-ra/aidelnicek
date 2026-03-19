@@ -47,6 +47,34 @@ class MealRecipe
         return ['status' => 'generating', 'job_id' => $jobId];
     }
 
+    /**
+     * Vrátí recept pro zobrazení v samostatném okně (bez spuštění generování).
+     * @return array{meal_name: string, recipe_text: string}|null
+     */
+    public static function getRecipeForView(int $userId, int $planId): ?array
+    {
+        $plan = self::loadPlanWithProposalLink($userId, $planId);
+        if ($plan === null) {
+            return null;
+        }
+
+        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        if ($proposalMealId <= 0) {
+            return null;
+        }
+
+        $stored = self::getRecipeByProposalMealId($proposalMealId);
+        if ($stored === null) {
+            return null;
+        }
+
+        $mealName = (string) ($plan['meal_name'] ?? $plan['proposal_meal_name'] ?? 'Recept');
+        return [
+            'meal_name'   => $mealName,
+            'recipe_text' => (string) $stored['recipe_text'],
+        ];
+    }
+
     public static function getStatusForPlan(int $userId, int $planId, ?int $jobId = null): ?array
     {
         $plan = self::loadPlanWithProposalLink($userId, $planId);

@@ -986,18 +986,42 @@ $router->get('/plan/recipe-status', function () {
     exit;
 });
 
-// ── M5: Přegenerování jídelníčku (podmíněno AI_REGEN_UI_ENABLED) ─────────────
-
-$router->post('/plan/regenerate', $requireCsrf('/plan/week', function () {
+$router->get('/plan/recipe/view', function () use ($projectRoot) {
     $user   = Auth::requireLogin();
     $userId = (int) $user['id'];
 
-    $enabled = getenv('AI_REGEN_UI_ENABLED');
-    if (!in_array($enabled, ['true', '1', 'yes'], true)) {
+    $planId = isset($_GET['plan_id']) ? (int) $_GET['plan_id'] : 0;
+    if ($planId <= 0) {
+        header('Location: /plan/day');
+        exit;
+    }
+
+    $recipe = MealRecipe::getRecipeForView($userId, $planId);
+    if ($recipe === null) {
+        $pageTitle = 'Recept nenalezen';
+        $content  = '<section class="error-page"><h1>Recept nenalezen</h1><p>Recept pro toto jídlo nebyl nalezen nebo ještě nebyl vygenerován.</p><a href="/plan/day" class="btn">Zpět na jídelníček</a></section>';
+        require $projectRoot . '/templates/layout.php';
+        exit;
+    }
+
+    $pageTitle = htmlspecialchars($recipe['meal_name']);
+    ob_start();
+    require $projectRoot . '/templates/recipe_view.php';
+    $content = ob_get_clean();
+    require $projectRoot . '/templates/layout.php';
+    exit;
+});
+
+// ── M5: Přegenerování jídelníčku (pouze admin / plánovač) ─────────────────────
+
+$router->post('/plan/regenerate', $requireCsrf('/plan/week', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
         header('Location: /plan/week');
         exit;
     }
 
+    $userId = (int) $user['id'];
     $weekId = isset($_POST['week_id']) ? (int) $_POST['week_id'] : 0;
     $week   = $weekId > 0 ? MealPlan::getWeekById($weekId) : null;
 
