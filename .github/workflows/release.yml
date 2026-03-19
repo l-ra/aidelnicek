@@ -37,6 +37,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get version info
+        id: version-info
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%d\ %H:%M:%S)" >> $GITHUB_OUTPUT
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -58,6 +64,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}-base:${{ needs.ensure-base-images.outputs.main-base-tag }}
+            GIT_SHA=${{ steps.version-info.outputs.short_sha }}
+            BUILD_DATE=${{ steps.version-info.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

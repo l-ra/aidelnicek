@@ -95,6 +95,12 @@ body {
     font-size: 0.875rem;
 }
 
+.site-footer__version {
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    opacity: 0.85;
+}
+
 /* Dashboard */
 .dashboard h1 {
     margin-top: 0;
