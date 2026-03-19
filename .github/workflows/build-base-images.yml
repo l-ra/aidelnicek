@@ -1,0 +1,120 @@
+name: Build base images
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if base image exists'
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      force_rebuild:
+        description: 'Force rebuild even if base image exists'
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      main-base-tag:
+        value: ${{ jobs.build-base-images.outputs.main-base-tag }}
+      llm-worker-base-tag:
+        value: ${{ jobs.build-base-images.outputs.llm-worker-base-tag }}
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-base-images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      main-base-tag: ${{ steps.set-outputs.outputs.main-base-tag }}
+      llm-worker-base-tag: ${{ steps.set-outputs.outputs.llm-worker-base-tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute base image hashes
+        id: hashes
+        run: |
+          chmod +x scripts/compute-base-hash.sh
+          MAIN_HASH=$(scripts/compute-base-hash.sh main)
+          WORKER_HASH=$(scripts/compute-base-hash.sh llm-worker)
+          echo "main-hash=$MAIN_HASH" >> $GITHUB_OUTPUT
+          echo "llm-worker-hash=$WORKER_HASH" >> $GITHUB_OUTPUT
+          echo "Main base hash: $MAIN_HASH"
+          echo "LLM worker base hash: $WORKER_HASH"
+
+      - name: Check if main base image exists
+        id: main-check
+        if: ${{ github.event.inputs.force_rebuild != true && github.event.inputs.force_rebuild != 'true' }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-base:base-${{ steps.hashes.outputs.main-hash }}"
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "tag=base-${{ steps.hashes.outputs.main-hash }}" >> $GITHUB_OUTPUT
+            echo "Main base image already exists: $IMAGE"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "tag=base-${{ steps.hashes.outputs.main-hash }}" >> $GITHUB_OUTPUT
+            echo "Main base image not found, will build"
+          fi
+
+      - name: Build main base image
+        if: steps.main-check.outputs.exists == 'false' || github.event.inputs.force_rebuild == true || github.event.inputs.force_rebuild == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.base
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ env.REGISTRY }}/${{ github.repository }}-base:base-${{ steps.hashes.outputs.main-hash }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check if LLM worker base image exists
+        id: worker-check
+        if: ${{ github.event.inputs.force_rebuild != true && github.event.inputs.force_rebuild != 'true' }}
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}-llm-worker-base:base-${{ steps.hashes.outputs.llm-worker-hash }}"
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "tag=base-${{ steps.hashes.outputs.llm-worker-hash }}" >> $GITHUB_OUTPUT
+            echo "LLM worker base image already exists: $IMAGE"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "tag=base-${{ steps.hashes.outputs.llm-worker-hash }}" >> $GITHUB_OUTPUT
+            echo "LLM worker base image not found, will build"
+          fi
+
+      - name: Build LLM worker base image
+        if: steps.worker-check.outputs.exists == 'false' || github.event.inputs.force_rebuild == true || github.event.inputs.force_rebuild == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: llm_worker
+          file: llm_worker/Dockerfile.base
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository }}-llm-worker-base:base-${{ steps.hashes.outputs.llm-worker-hash }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Set outputs
+        id: set-outputs
+        run: |
+          echo "main-base-tag=base-${{ steps.hashes.outputs.main-hash }}" >> $GITHUB_OUTPUT
+          echo "llm-worker-base-tag=base-${{ steps.hashes.outputs.llm-worker-hash }}" >> $GITHUB_OUTPUT

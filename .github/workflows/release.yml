@@ -9,7 +9,14 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  ensure-base-images:
+    uses: ./.github/workflows/build-base-images.yml
+    with:
+      force_rebuild: false
+    secrets: inherit
+
   build-and-push-docker:
+    needs: ensure-base-images
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -44,10 +51,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}-base:${{ needs.ensure-base-images.outputs.main-base-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -65,10 +75,13 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./llm_worker
+          file: ./llm_worker/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta-worker.outputs.tags }}
           labels: ${{ steps.meta-worker.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.REGISTRY }}/${{ github.repository }}-llm-worker-base:${{ needs.ensure-base-images.outputs.llm-worker-base-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

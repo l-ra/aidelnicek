@@ -1,9 +1,7 @@
-FROM python:3.12-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Final image: extends base (dependencies) with application code.
+# Build with: docker build --build-arg BASE_IMAGE=ghcr.io/owner/repo-llm-worker-base:base-xxx -t worker .
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
 
 COPY . .
 
