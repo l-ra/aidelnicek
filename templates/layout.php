@@ -61,6 +61,12 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
     <footer class="site-footer">
         <div class="container">
             <p>&copy; <?= date('Y') ?> Aidelnicek — Zdravé stravování pro domácnost</p>
+            <?php
+            $versionInfo = \Aidelnicek\Version::get(dirname(__DIR__));
+            if ($versionInfo !== null):
+            ?>
+            <p class="site-footer__version">verze <?= htmlspecialchars($versionInfo['version']) ?> · sestaveno <?= htmlspecialchars($versionInfo['build_date']) ?></p>
+            <?php endif; ?>
         </div>
     </footer>
     <script src="/js/app.js"></script>
