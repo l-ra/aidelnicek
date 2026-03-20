@@ -472,26 +472,15 @@ body {
     gap: 0.35rem;
 }
 
-.meal-card__swap-label {
-    font-size: 0.8rem;
-    font-weight: 500;
-    opacity: 0.9;
-}
-
-.meal-card__swap-select {
-    font-size: 0.8rem;
-    padding: 0.2rem 0.5rem;
-    border-radius: 0.3rem;
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.15);
+.meal-card__header .meal-card__swap-btn {
+    background: rgba(255, 255, 255, 0.2);
     color: var(--color-white);
-    min-width: 8rem;
-    max-width: 12rem;
+    border-color: rgba(255, 255, 255, 0.5);
 }
 
-.meal-card__swap-select option {
-    background: var(--color-white);
-    color: var(--color-text);
+.meal-card__header .meal-card__swap-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.7);
 }
 
 .meal-alternatives {
@@ -510,10 +499,6 @@ body {
         align-items: flex-start;
     }
 
-    .meal-card__swap-select {
-        min-width: 100%;
-        max-width: none;
-    }
 }
 
 /* ── Alternative option ───────────────────────────────────────────────────── */
@@ -1525,6 +1510,88 @@ body {
     display: flex;
     gap: 0.75rem;
     margin-top: 1.25rem;
+}
+
+/* ── Swap meal modal — výběr jídla k výměně ─────────────────────────────────── */
+
+.swap-meal-modal__content {
+    max-width: 480px;
+}
+
+.swap-meal-modal__title {
+    margin: 0 0 0.25rem;
+    font-size: 1.25rem;
+}
+
+.swap-meal-modal__subtitle {
+    margin: 0 0 1rem;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+}
+
+.swap-meal-modal__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 50vh;
+    overflow-y: auto;
+}
+
+.swap-meal-option {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 1rem;
+    border: 2px solid #e9ecef;
+    border-radius: var(--radius);
+    background: var(--color-white);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.swap-meal-option:hover {
+    border-color: var(--color-primary-light);
+    background: rgba(45, 106, 79, 0.04);
+}
+
+.swap-meal-option__day {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-primary);
+    background: rgba(45, 106, 79, 0.12);
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+    margin-bottom: 0.35rem;
+}
+
+.swap-meal-option__name {
+    display: block;
+    font-weight: 600;
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+}
+
+.swap-meal-option__desc {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin: 0 0 0.5rem;
+    line-height: 1.4;
+}
+
+.swap-meal-option__ingredients {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    margin: 0;
+    padding-left: 1.25rem;
+}
+
+.swap-meal-option__ingredients li {
+    margin-bottom: 0.15rem;
+}
+
+.meal-card__swap-btn {
+    font-size: 0.85rem;
 }
 
 /* ── Admin — profil: řádek s výškou a váhou ─────────────────────────────────── */

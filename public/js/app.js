@@ -2,6 +2,17 @@
  * Aidelnicek — M1/M2/M3 JS
  */
 
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    var s = String(str);
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     // ── Responsivní navigace: hamburger toggle ────────────────────────────────
     initNavToggle();
@@ -318,49 +329,137 @@ function attachEatenHandler(cb) {
 }
 
 /**
- * M3: Swap dropdown — prohození jídla za jídlo z jiného dne.
+ * M3: Swap modal — prohození jídla za jídlo z jiného dne.
+ * Zobrazí vlastní modální okno s přehledem jídel k výměně (název, popis, ingredience).
  */
 function initSwapDropdown() {
-    document.querySelectorAll('.meal-card__swap-select').forEach(function (sel) {
-        sel.addEventListener('change', function () {
-            var dayB = parseInt(this.value, 10);
-            if (!dayB || dayB < 1 || dayB > 7) return;
+    var modal = document.getElementById('swap-meal-modal');
+    if (!modal) return;
 
-            var card = this.closest('.meal-card');
-            if (!card) return;
+    var titleEl = document.getElementById('swap-meal-modal-title');
+    var subtitleEl = document.getElementById('swap-meal-modal-subtitle');
+    var listEl = document.getElementById('swap-meal-modal-list');
+    var closeBtn = document.getElementById('swap-meal-modal-close');
+    var backdrop = modal.querySelector('.swap-meal-modal__backdrop');
 
-            var weekId = parseInt(card.getAttribute('data-week-id'), 10);
-            var dayA = parseInt(card.getAttribute('data-current-day'), 10);
-            var mealType = this.getAttribute('data-meal-type');
-            var redirect = card.getAttribute('data-redirect') || '/plan/day';
+    var currentCard = null;
 
-            if (!weekId || !mealType || dayA === dayB) return;
+    function closeModal() {
+        modal.hidden = true;
+        document.body.style.overflow = '';
+        currentCard = null;
+    }
 
-            this.disabled = true;
-            var originalValue = this.value;
+    function openModal(card) {
+        currentCard = card;
+        var btn = card.querySelector('.meal-card__swap-btn');
+        if (!btn) return;
 
-            postAjax('/plan/swap', {
-                week_id: weekId,
-                day_a: dayA,
-                day_b: dayB,
-                meal_type: mealType,
-                redirect_to: redirect,
-            })
-                .then(function (json) {
-                    if (json.ok) {
-                        window.location.href = redirect;
-                    } else {
-                        showNetworkError();
-                        sel.value = '';
-                        sel.disabled = false;
-                    }
-                })
-                .catch(function () {
-                    showNetworkError();
-                    sel.value = '';
-                    sel.disabled = false;
+        var optionsJson = btn.getAttribute('data-swap-options');
+        var mealTypeLabel = btn.getAttribute('data-meal-type-label') || '';
+        var options = [];
+        try {
+            options = optionsJson ? JSON.parse(optionsJson) : [];
+        } catch (e) {
+            options = [];
+        }
+
+        titleEl.textContent = 'Vyměnit jídlo';
+        subtitleEl.textContent = 'Vyberte jídlo z jiného dne pro ' + mealTypeLabel + ':';
+        listEl.innerHTML = '';
+
+        if (options.length === 0) {
+            var empty = document.createElement('p');
+            empty.className = 'text-muted';
+            empty.textContent = 'Žádná jiná jídla k výměně.';
+            listEl.appendChild(empty);
+        } else {
+            options.forEach(function (opt) {
+                var item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'swap-meal-option';
+                item.setAttribute('data-day', opt.day);
+                item.setAttribute('role', 'listitem');
+
+                var html = '<span class="swap-meal-option__day">' + escapeHtml(opt.dayLabel) + '</span>';
+                html += '<span class="swap-meal-option__name">' + escapeHtml(opt.mealName) + '</span>';
+                if (opt.description) {
+                    html += '<p class="swap-meal-option__desc">' + escapeHtml(opt.description) + '</p>';
+                }
+                if (opt.ingredients && opt.ingredients.length > 0) {
+                    html += '<ul class="swap-meal-option__ingredients">';
+                    opt.ingredients.forEach(function (ing) {
+                        var text = typeof ing === 'object' && ing !== null
+                            ? (ing.name || '') + (ing.quantity ? ' — ' + ing.quantity + (ing.unit ? ' ' + ing.unit : '') : '')
+                            : String(ing);
+                        html += '<li>' + escapeHtml(text) + '</li>';
+                    });
+                    html += '</ul>';
+                }
+                item.innerHTML = html;
+
+                item.addEventListener('click', function () {
+                    var dayB = parseInt(this.getAttribute('data-day'), 10);
+                    if (!dayB || !currentCard) return;
+
+                    var weekId = parseInt(currentCard.getAttribute('data-week-id'), 10);
+                    var dayA = parseInt(currentCard.getAttribute('data-current-day'), 10);
+                    var mealType = currentCard.getAttribute('data-meal-type');
+                    var redirect = currentCard.getAttribute('data-redirect') || '/plan/day';
+
+                    if (!weekId || !mealType || dayA === dayB) return;
+
+                    item.disabled = true;
+                    listEl.querySelectorAll('.swap-meal-option').forEach(function (o) {
+                        o.disabled = true;
+                    });
+
+                    postAjax('/plan/swap', {
+                        week_id: weekId,
+                        day_a: dayA,
+                        day_b: dayB,
+                        meal_type: mealType,
+                        redirect_to: redirect,
+                    })
+                        .then(function (json) {
+                            if (json.ok) {
+                                window.location.href = redirect;
+                            } else {
+                                showNetworkError();
+                                listEl.querySelectorAll('.swap-meal-option').forEach(function (o) {
+                                    o.disabled = false;
+                                });
+                            }
+                        })
+                        .catch(function () {
+                            showNetworkError();
+                            listEl.querySelectorAll('.swap-meal-option').forEach(function (o) {
+                                o.disabled = false;
+                            });
+                        });
                 });
+
+                listEl.appendChild(item);
+            });
+        }
+
+        modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+        var firstOption = listEl.querySelector('.swap-meal-option');
+        if (firstOption) firstOption.focus();
+    }
+
+    document.querySelectorAll('.meal-card__swap-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var card = this.closest('.meal-card');
+            if (card) openModal(card);
         });
+    });
+
+    if (closeBtn) closeBtn.addEventListener('click', closeModal);
+    if (backdrop) backdrop.addEventListener('click', closeModal);
+    document.addEventListener('keydown', function (e) {
+        if (!modal.hidden && e.key === 'Escape') closeModal();
     });
 }
 
