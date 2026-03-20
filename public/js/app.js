@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', function () {
     initAlternativePicker();
     initEatenCheckboxes();
     initMealRecipeButtons();
+    initSwapDropdown();
 
     // ── M4: Nákupní seznam interakce ──────────────────────────────────────────
     initShoppingToggle();
@@ -313,6 +314,53 @@ function attachEatenHandler(cb) {
                 cbEl.checked = !cbEl.checked;
                 showNetworkError();
             });
+    });
+}
+
+/**
+ * M3: Swap dropdown — prohození jídla za jídlo z jiného dne.
+ */
+function initSwapDropdown() {
+    document.querySelectorAll('.meal-card__swap-select').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            var dayB = parseInt(this.value, 10);
+            if (!dayB || dayB < 1 || dayB > 7) return;
+
+            var card = this.closest('.meal-card');
+            if (!card) return;
+
+            var weekId = parseInt(card.getAttribute('data-week-id'), 10);
+            var dayA = parseInt(card.getAttribute('data-current-day'), 10);
+            var mealType = this.getAttribute('data-meal-type');
+            var redirect = card.getAttribute('data-redirect') || '/plan/day';
+
+            if (!weekId || !mealType || dayA === dayB) return;
+
+            this.disabled = true;
+            var originalValue = this.value;
+
+            postAjax('/plan/swap', {
+                week_id: weekId,
+                day_a: dayA,
+                day_b: dayB,
+                meal_type: mealType,
+                redirect_to: redirect,
+            })
+                .then(function (json) {
+                    if (json.ok) {
+                        window.location.href = redirect;
+                    } else {
+                        showNetworkError();
+                        sel.value = '';
+                        sel.disabled = false;
+                    }
+                })
+                .catch(function () {
+                    showNetworkError();
+                    sel.value = '';
+                    sel.disabled = false;
+                });
+        });
     });
 }
 

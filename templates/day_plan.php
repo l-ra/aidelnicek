@@ -7,6 +7,8 @@ $csrfToken = Csrf::generate();
 
 $currentRedirect = '/plan/day?day=' . $day;
 $householdSelections = $householdSelections ?? [];
+$weekPlan = $weekPlan ?? [];
+$weekId = $weekId ?? 0;
 
 // Day navigation
 $prevDay = $day > 1 ? $day - 1 : null;
@@ -62,9 +64,42 @@ ob_start();
                 $chosenAltNum = $alt1 !== null ? 1 : ($alt2 !== null ? 2 : null);
             }
             ?>
-            <div class="meal-card" data-meal-type="<?= htmlspecialchars($mealType) ?>">
-                <div class="meal-card__header">
-                    <?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?>
+            <div class="meal-card" data-meal-type="<?= htmlspecialchars($mealType) ?>"
+                 data-week-id="<?= (int) $weekId ?>"
+                 data-current-day="<?= (int) $day ?>"
+                 data-redirect="<?= htmlspecialchars($currentRedirect) ?>">
+                <div class="meal-card__header meal-card__header-row">
+                    <span><?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?></span>
+                    <?php if ($weekId > 0): ?>
+                    <div class="meal-card__swap-wrap">
+                        <label for="swap-<?= htmlspecialchars($mealType) ?>" class="meal-card__swap-label">Vyměnit za:</label>
+                        <select id="swap-<?= htmlspecialchars($mealType) ?>"
+                                class="meal-card__swap-select"
+                                data-meal-type="<?= htmlspecialchars($mealType) ?>"
+                                aria-label="Vyměnit <?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?> za jiný den">
+                            <option value="">— vyberte den —</option>
+                            <?php for ($d = 1; $d <= 7; $d++): ?>
+                                <?php if ($d === $day): continue; endif; ?>
+                                <?php
+                                $otherSlot = $weekPlan[$d][$mealType] ?? ['alt1' => null, 'alt2' => null];
+                                $otherChosen = null;
+                                foreach (['alt1', 'alt2'] as $k) {
+                                    $row = $otherSlot[$k] ?? null;
+                                    if ($row !== null && (int) ($row['is_chosen'] ?? 0) === 1) {
+                                        $otherChosen = $row;
+                                        break;
+                                    }
+                                }
+                                if ($otherChosen === null) {
+                                    $otherChosen = $otherSlot['alt1'] ?? $otherSlot['alt2'];
+                                }
+                                $shortName = $otherChosen ? mb_substr($otherChosen['meal_name'], 0, 25) . (mb_strlen($otherChosen['meal_name']) > 25 ? '…' : '') : '—';
+                                ?>
+                                <option value="<?= $d ?>"><?= htmlspecialchars($shortName) ?> — <?= htmlspecialchars(MealPlan::getDayShortLabel($d)) ?></option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                    <?php endif; ?>
                 </div>
                 <div class="meal-alternatives">
                     <?php foreach ([1 => $alt1, 2 => $alt2] as $altNum => $alt): ?>
