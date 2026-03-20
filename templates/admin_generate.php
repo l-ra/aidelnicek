@@ -76,31 +76,8 @@ ob_start();
 
         <!-- ── Parametry ───────────────────────────────────────────────── -->
         <div class="llm-generate-form-wrap">
-            <div class="admin-card">
+            <div class="admin-card llm-generate-params-card">
                 <h2>Parametry generování</h2>
-
-                <div class="form-group">
-                    <label for="gen-mode">Režim generování</label>
-                    <select id="gen-mode" class="form-control">
-                        <option value="single" selected>Individuálně pro vybraného uživatele</option>
-                        <option value="shared_all">Společně pro všechny (stejná jídla, různé porce)</option>
-                    </select>
-                    <small id="gen-mode-help" class="form-help">
-                        Vygenerují se jídla pouze pro vybraného uživatele.
-                    </small>
-                </div>
-
-                <div class="form-group">
-                    <label for="gen-user" id="gen-user-label">Uživatel</label>
-                    <select id="gen-user" class="form-control">
-                        <?php foreach ($users as $u): ?>
-                            <option value="<?= (int) $u['id'] ?>">
-                                <?= htmlspecialchars($u['name']) ?>
-                                (<?= htmlspecialchars($u['email']) ?>)
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
 
                 <div class="form-group">
                     <label for="gen-week-select">Výběr týdne</label>
@@ -125,6 +102,29 @@ ob_start();
                         <input type="number" id="gen-year" class="form-control"
                                value="<?= $currentYear ?>" min="2024" max="2030">
                     </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="gen-mode">Režim generování</label>
+                    <select id="gen-mode" class="form-control">
+                        <option value="single" selected>Individuálně pro vybraného uživatele</option>
+                        <option value="shared_all">Společně pro všechny (stejná jídla, různé porce)</option>
+                    </select>
+                    <small id="gen-mode-help" class="form-help">
+                        Vygenerují se jídla pouze pro vybraného uživatele.
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="gen-user" id="gen-user-label">Uživatel</label>
+                    <select id="gen-user" class="form-control">
+                        <?php foreach ($users as $u): ?>
+                            <option value="<?= (int) $u['id'] ?>">
+                                <?= htmlspecialchars($u['name']) ?>
+                                (<?= htmlspecialchars($u['email']) ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
 
                 <div class="form-group-checkbox" style="margin-top:0.5rem">
@@ -173,6 +173,10 @@ ob_start();
 
 <style>
 .llm-generate-page { max-width: 1200px; }
+.llm-generate-params-card {
+    overflow: visible;
+    min-height: auto;
+}
 .llm-generate-layout {
     display: grid;
     grid-template-columns: 360px 1fr;
