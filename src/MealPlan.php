@@ -469,6 +469,21 @@ class MealPlan
     }
 
     /**
+     * Vrátí ID uživatelů, kteří mají alespoň jeden záznam v meal_plans pro daný týden
+     * („rodina“ = uživatelé s plánem pro tento týden).
+     *
+     * @return array<int>
+     */
+    public static function getUserIdsWithPlansForWeek(int $weekId): array
+    {
+        $stmt = Database::get()->prepare(
+            'SELECT DISTINCT user_id FROM meal_plans WHERE week_id = ? ORDER BY user_id ASC'
+        );
+        $stmt->execute([$weekId]);
+        return array_map('intval', array_column($stmt->fetchAll(), 'user_id'));
+    }
+
+    /**
      * Prohodí slot (všechny alternativy daného typu jídla) mezi dvěma dny v týdnu.
      * Snídaně za snídani, svačinu za svačinu atd.
      *
@@ -518,6 +533,49 @@ class MealPlan
         }
 
         return true;
+    }
+
+    /**
+     * Prohodí slot pro všechny uživatele s plánem v daném týdnu.
+     *
+     * @param int $currentUserId Přihlášený uživatel (musí být v rodině)
+     * @param int $weekId
+     * @param int $dayA
+     * @param int $dayB
+     * @param string $mealType
+     * @return bool True pokud alespoň jedna výměna proběhla
+     */
+    public static function swapSlotsForHousehold(int $currentUserId, int $weekId, int $dayA, int $dayB, string $mealType): bool
+    {
+        $userIds = self::getUserIdsWithPlansForWeek($weekId);
+        if (empty($userIds)) {
+            return false;
+        }
+        $db = Database::get();
+        $db->beginTransaction();
+        try {
+            $tempA = 91;
+            $tempB = 92;
+            foreach ($userIds as $uid) {
+                $db->prepare(
+                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+                )->execute([$tempA, $uid, $weekId, $dayA, $mealType]);
+                $db->prepare(
+                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+                )->execute([$tempB, $uid, $weekId, $dayB, $mealType]);
+                $db->prepare(
+                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+                )->execute([$dayB, $uid, $weekId, $tempA, $mealType]);
+                $db->prepare(
+                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+                )->execute([$dayA, $uid, $weekId, $tempB, $mealType]);
+            }
+            $db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            return false;
+        }
     }
 
     public static function isEaten(int $userId, int $planId): ?bool

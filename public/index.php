@@ -830,7 +830,10 @@ $router->post('/plan/swap', $requireCsrf('/plan/day', function () use ($projectR
         exit;
     }
 
-    $ok = MealPlan::swapSlots($userId, $weekId, $dayA, $dayB, $mealType);
+    $swapScope = isset($_POST['swap_scope']) ? (string) $_POST['swap_scope'] : 'household';
+    $ok = ($swapScope === 'user_only')
+        ? MealPlan::swapSlots($userId, $weekId, $dayA, $dayB, $mealType)
+        : MealPlan::swapSlotsForHousehold($userId, $weekId, $dayA, $dayB, $mealType);
 
     if ($isAjax) {
         header('Content-Type: application/json');

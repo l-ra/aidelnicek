@@ -1529,6 +1529,31 @@ body {
     color: var(--color-text-muted);
 }
 
+.swap-meal-modal__scope {
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: var(--radius);
+}
+
+.swap-meal-modal__scope-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.swap-meal-modal__scope-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.swap-meal-modal__scope-hint {
+    margin: 0.35rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
 .swap-meal-modal__list {
     display: flex;
     flex-direction: column;
