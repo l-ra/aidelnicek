@@ -468,6 +468,58 @@ class MealPlan
         return true;
     }
 
+    /**
+     * Prohodí slot (všechny alternativy daného typu jídla) mezi dvěma dny v týdnu.
+     * Snídaně za snídani, svačinu za svačinu atd.
+     *
+     * @param int $userId
+     * @param int $weekId
+     * @param int $dayA Den 1–7
+     * @param int $dayB Den 1–7 (musí být jiný než dayA)
+     * @param string $mealType breakfast, snack_am, lunch, snack_pm, dinner
+     * @return bool
+     */
+    public static function swapSlots(int $userId, int $weekId, int $dayA, int $dayB, string $mealType): bool
+    {
+        if ($dayA === $dayB || $dayA < 1 || $dayA > 7 || $dayB < 1 || $dayB > 7) {
+            return false;
+        }
+        if (!in_array($mealType, self::MEAL_TYPE_ORDER, true)) {
+            return false;
+        }
+
+        $db = Database::get();
+        $db->beginTransaction();
+        try {
+            // Use temporary day values to avoid unique constraint during swap
+            $tempA = 91;
+            $tempB = 92;
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$tempA, $userId, $weekId, $dayA, $mealType]);
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$tempB, $userId, $weekId, $dayB, $mealType]);
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$dayB, $userId, $weekId, $tempA, $mealType]);
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$dayA, $userId, $weekId, $tempB, $mealType]);
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            return false;
+        }
+
+        return true;
+    }
+
     public static function isEaten(int $userId, int $planId): ?bool
     {
         $stmt = Database::get()->prepare('SELECT is_eaten FROM meal_plans WHERE id = ? AND user_id = ?');

@@ -799,10 +799,48 @@ $router->get('/plan/day', function () use ($projectRoot) {
 
     MealPlan::ensureSingleChosenPerSlot($userId, $weekId);
     $dayPlan = MealPlan::getDayPlan($userId, $weekId, $day);
+    $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
     $householdSelections = MealPlan::getHouseholdSelectionsForDay($userId, $weekId, $day);
 
     require $projectRoot . '/templates/day_plan.php';
 });
+
+$router->post('/plan/swap', $requireCsrf('/plan/day', function () use ($projectRoot) {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $weekId   = isset($_POST['week_id']) ? (int) $_POST['week_id'] : 0;
+    $dayA     = isset($_POST['day_a']) ? (int) $_POST['day_a'] : 0;
+    $dayB     = isset($_POST['day_b']) ? (int) $_POST['day_b'] : 0;
+    $mealType = isset($_POST['meal_type']) ? (string) $_POST['meal_type'] : '';
+    $redirectTo = $_POST['redirect_to'] ?? '/plan/day';
+    $isAjax   = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+
+    $redirectTo = preg_replace('/[^a-zA-Z0-9\/?=&_-]/', '', $redirectTo) ?: '/plan/day';
+
+    $validMealTypes = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
+    if ($weekId <= 0 || $dayA < 1 || $dayA > 7 || $dayB < 1 || $dayB > 7
+        || $dayA === $dayB || !in_array($mealType, $validMealTypes, true)) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'invalid params']);
+            exit;
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $ok = MealPlan::swapSlots($userId, $weekId, $dayA, $dayB, $mealType);
+
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => $ok]);
+        exit;
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}));
 
 $router->get('/plan/week', function () use ($projectRoot) {
     $user   = Auth::requireLogin();
