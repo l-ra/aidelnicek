@@ -368,6 +368,9 @@ function initSwapDropdown() {
         subtitleEl.textContent = 'Vyberte jídlo z jiného dne pro ' + mealTypeLabel + ':';
         listEl.innerHTML = '';
 
+        var scopeCheckbox = document.getElementById('swap-meal-modal-scope-user-only');
+        if (scopeCheckbox) scopeCheckbox.checked = false;
+
         if (options.length === 0) {
             var empty = document.createElement('p');
             empty.className = 'text-muted';
@@ -414,11 +417,15 @@ function initSwapDropdown() {
                         o.disabled = true;
                     });
 
+                    var scopeEl = document.getElementById('swap-meal-modal-scope-user-only');
+                    var swapScope = (scopeEl && scopeEl.checked) ? 'user_only' : 'household';
+
                     postAjax('/plan/swap', {
                         week_id: weekId,
                         day_a: dayA,
                         day_b: dayB,
                         meal_type: mealType,
+                        swap_scope: swapScope,
                         redirect_to: redirect,
                     })
                         .then(function (json) {

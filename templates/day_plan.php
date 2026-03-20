@@ -232,6 +232,15 @@ ob_start();
     <div class="modal-content swap-meal-modal__content">
         <h2 id="swap-meal-modal-title" class="swap-meal-modal__title">Vyměnit jídlo</h2>
         <p class="swap-meal-modal__subtitle" id="swap-meal-modal-subtitle"></p>
+        <div class="swap-meal-modal__scope">
+            <label class="swap-meal-modal__scope-toggle">
+                <input type="checkbox" id="swap-meal-modal-scope-user-only" value="1" aria-describedby="swap-meal-modal-scope-hint">
+                <span class="swap-meal-modal__scope-label">Výměna jen u mě</span>
+            </label>
+            <p id="swap-meal-modal-scope-hint" class="swap-meal-modal__scope-hint text-muted">
+                Ve výchozím režimu se jídlo vymění u všech členů rodiny. Zaškrtnutím pouze u vás.
+            </p>
+        </div>
         <div class="swap-meal-modal__list" id="swap-meal-modal-list" role="list"></div>
         <div class="modal-actions swap-meal-modal__actions">
             <button type="button" class="btn btn-secondary" id="swap-meal-modal-close">Zrušit</button>
