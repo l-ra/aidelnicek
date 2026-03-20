@@ -49,7 +49,7 @@ ob_start();
             <a href="/admin/sql" class="btn btn-primary">Otevřít konzoli</a>
         </div>
 
-        <div class="admin-card">
+        <div class="admin-card" hidden>
             <h2>Generování demo dat</h2>
             <p>Vygeneruje ukázkový jídelníček pro aktuální týden. Pokud uživatel již data má, nic se nepřepíše.</p>
             <form method="post" action="/admin/seed-demo">

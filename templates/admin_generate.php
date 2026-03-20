@@ -19,12 +19,50 @@ $currentUser = Auth::getCurrentUser();
 $db    = \Aidelnicek\Database::get();
 $users = $db->query('SELECT id, name, email FROM users ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
 
-// Current ISO week defaults
-$currentWeekNum = (int) date('W');
-$currentYear    = (int) date('Y');
+// Current ISO week defaults (can be overridden by ?week=&year=)
+$currentWeekNum = isset($_GET['week']) ? (int) $_GET['week'] : (int) date('W');
+$currentYear    = isset($_GET['year']) ? (int) $_GET['year'] : (int) date('Y');
+if ($currentWeekNum < 1 || $currentWeekNum > 53) {
+    $currentWeekNum = (int) date('W');
+}
+if ($currentYear < 2024 || $currentYear > 2030) {
+    $currentYear = (int) date('Y');
+}
 
-// Ensure a week record exists and get its id for the default selection
-$currentWeekRow = MealPlan::getOrCreateCurrentWeek();
+// Build week options for dropdown: current, next, previous + a few more
+$weekOptions = [];
+$now = new DateTimeImmutable();
+$hasRequestedWeek = false;
+for ($offset = -2; $offset <= 4; $offset++) {
+    $dt = $now->modify($offset . ' weeks');
+    $wn = (int) $dt->format('W');
+    $yr = (int) $dt->format('Y');
+    if ($wn === $currentWeekNum && $yr === $currentYear) {
+        $hasRequestedWeek = true;
+    }
+    $mon = $dt->setISODate($yr, $wn, 1);
+    $sun = $mon->modify('+6 days');
+    $label = $offset === 0 ? 'Tento týden' : ($offset === 1 ? 'Příští týden' : ($offset === -1 ? 'Předchozí týden' : "Týden {$wn}/{$yr}"));
+    $weekOptions[] = [
+        'week' => $wn,
+        'year' => $yr,
+        'label' => $label . ' (' . $mon->format('j.n.') . '–' . $sun->format('j.n.') . ' ' . $yr . ')',
+    ];
+}
+// If URL params specify a week not in the list, add it
+if (!$hasRequestedWeek) {
+    try {
+        $mon = (new DateTimeImmutable())->setISODate($currentYear, $currentWeekNum, 1);
+        $sun = $mon->modify('+6 days');
+        array_unshift($weekOptions, [
+            'week' => $currentWeekNum,
+            'year' => $currentYear,
+            'label' => "Týden {$currentWeekNum}/{$currentYear} (" . $mon->format('j.n.') . '–' . $sun->format('j.n.') . ' ' . $currentYear . ')',
+        ]);
+    } catch (\Throwable $e) {
+        // Invalid week/year, ignore
+    }
+}
 
 ob_start();
 ?>
@@ -64,7 +102,19 @@ ob_start();
                     </select>
                 </div>
 
-                <div class="form-row--inline">
+                <div class="form-group">
+                    <label for="gen-week-select">Výběr týdne</label>
+                    <select id="gen-week-select" class="form-control">
+                        <?php foreach ($weekOptions as $opt): ?>
+                            <option value="<?= $opt['week'] ?>-<?= $opt['year'] ?>"
+                                    <?= $opt['week'] === $currentWeekNum && $opt['year'] === $currentYear ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($opt['label']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                        <option value="custom">— Vlastní týden —</option>
+                    </select>
+                </div>
+                <div id="gen-week-custom-wrap" class="form-row--inline" hidden>
                     <div class="form-group">
                         <label for="gen-week">Týden (ISO)</label>
                         <input type="number" id="gen-week" class="form-control"
@@ -170,13 +220,31 @@ ob_start();
     var infoElapsed  = document.getElementById('info-elapsed');
     var infoChunks   = document.getElementById('info-chunks');
 
-    var modeSel   = document.getElementById('gen-mode');
-    var modeHelp  = document.getElementById('gen-mode-help');
-    var userLabel = document.getElementById('gen-user-label');
-    var userSel   = document.getElementById('gen-user');
-    var weekInput = document.getElementById('gen-week');
-    var yearInput = document.getElementById('gen-year');
-    var forceChk  = document.getElementById('gen-force');
+    var modeSel      = document.getElementById('gen-mode');
+    var modeHelp     = document.getElementById('gen-mode-help');
+    var userLabel   = document.getElementById('gen-user-label');
+    var userSel     = document.getElementById('gen-user');
+    var weekSelect  = document.getElementById('gen-week-select');
+    var weekCustom  = document.getElementById('gen-week-custom-wrap');
+    var weekInput   = document.getElementById('gen-week');
+    var yearInput   = document.getElementById('gen-year');
+    var forceChk    = document.getElementById('gen-force');
+
+    function syncWeekFromSelect() {
+        var val = weekSelect.value;
+        if (val === 'custom') {
+            weekCustom.hidden = false;
+        } else {
+            weekCustom.hidden = true;
+            var parts = val.split('-');
+            if (parts.length === 2) {
+                weekInput.value = parts[0];
+                yearInput.value = parts[1];
+            }
+        }
+    }
+    weekSelect.addEventListener('change', syncWeekFromSelect);
+    syncWeekFromSelect();
 
     var activeEs   = null;
     var startedAt  = null;
