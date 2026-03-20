@@ -71,33 +71,46 @@ ob_start();
                 <div class="meal-card__header meal-card__header-row">
                     <span><?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?></span>
                     <?php if ($weekId > 0): ?>
+                    <?php
+                    $swapOptions = [];
+                    for ($d = 1; $d <= 7; $d++) {
+                        if ($d === $day) continue;
+                        $otherSlot = $weekPlan[$d][$mealType] ?? ['alt1' => null, 'alt2' => null];
+                        $otherChosen = null;
+                        foreach (['alt1', 'alt2'] as $k) {
+                            $row = $otherSlot[$k] ?? null;
+                            if ($row !== null && (int) ($row['is_chosen'] ?? 0) === 1) {
+                                $otherChosen = $row;
+                                break;
+                            }
+                        }
+                        if ($otherChosen === null) {
+                            $otherChosen = $otherSlot['alt1'] ?? $otherSlot['alt2'];
+                        }
+                        $ingredients = [];
+                        if (!empty($otherChosen['ingredients'])) {
+                            $ingredients = json_decode($otherChosen['ingredients'], true) ?? [];
+                        }
+                        $swapOptions[] = [
+                            'day' => $d,
+                            'dayLabel' => MealPlan::getDayShortLabel($d),
+                            'dayFullLabel' => MealPlan::getDayLabel($d),
+                            'mealName' => $otherChosen['meal_name'] ?? '—',
+                            'description' => $otherChosen['description'] ?? '',
+                            'ingredients' => $ingredients,
+                        ];
+                    }
+                    ?>
                     <div class="meal-card__swap-wrap">
-                        <label for="swap-<?= htmlspecialchars($mealType) ?>" class="meal-card__swap-label">Vyměnit za:</label>
-                        <select id="swap-<?= htmlspecialchars($mealType) ?>"
-                                class="meal-card__swap-select"
+                        <button type="button"
+                                class="btn btn-secondary btn-sm meal-card__swap-btn"
                                 data-meal-type="<?= htmlspecialchars($mealType) ?>"
+                                data-meal-type-label="<?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?>"
+                                data-swap-options="<?= htmlspecialchars(json_encode($swapOptions)) ?>"
+                                aria-haspopup="dialog"
                                 aria-label="Vyměnit <?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?> za jiný den">
-                            <option value="">— vyberte den —</option>
-                            <?php for ($d = 1; $d <= 7; $d++): ?>
-                                <?php if ($d === $day): continue; endif; ?>
-                                <?php
-                                $otherSlot = $weekPlan[$d][$mealType] ?? ['alt1' => null, 'alt2' => null];
-                                $otherChosen = null;
-                                foreach (['alt1', 'alt2'] as $k) {
-                                    $row = $otherSlot[$k] ?? null;
-                                    if ($row !== null && (int) ($row['is_chosen'] ?? 0) === 1) {
-                                        $otherChosen = $row;
-                                        break;
-                                    }
-                                }
-                                if ($otherChosen === null) {
-                                    $otherChosen = $otherSlot['alt1'] ?? $otherSlot['alt2'];
-                                }
-                                $shortName = $otherChosen ? mb_substr($otherChosen['meal_name'], 0, 25) . (mb_strlen($otherChosen['meal_name']) > 25 ? '…' : '') : '—';
-                                ?>
-                                <option value="<?= $d ?>"><?= htmlspecialchars($shortName) ?> — <?= htmlspecialchars(MealPlan::getDayShortLabel($d)) ?></option>
-                            <?php endfor; ?>
-                        </select>
+                            Vyměnit za…
+                        </button>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -212,6 +225,19 @@ ob_start();
     <input type="hidden" name="plan_id" id="form-eaten-plan-id">
     <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($currentRedirect) ?>">
 </form>
+
+<!-- Modal pro výběr jídla k výměně -->
+<div id="swap-meal-modal" class="modal swap-meal-modal" hidden aria-modal="true" role="dialog" aria-labelledby="swap-meal-modal-title">
+    <div class="modal-backdrop swap-meal-modal__backdrop"></div>
+    <div class="modal-content swap-meal-modal__content">
+        <h2 id="swap-meal-modal-title" class="swap-meal-modal__title">Vyměnit jídlo</h2>
+        <p class="swap-meal-modal__subtitle" id="swap-meal-modal-subtitle"></p>
+        <div class="swap-meal-modal__list" id="swap-meal-modal-list" role="list"></div>
+        <div class="modal-actions swap-meal-modal__actions">
+            <button type="button" class="btn btn-secondary" id="swap-meal-modal-close">Zrušit</button>
+        </div>
+    </div>
+</div>
 <?php
 $content = ob_get_clean();
 require __DIR__ . '/layout.php';
