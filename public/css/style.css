@@ -550,6 +550,85 @@ body {
     border-top: 1px solid #e9ecef;
 }
 
+.alt-option__collapsed-inner {
+    padding: 0.5rem 0;
+}
+
+.alt-ingredients__more {
+    font-style: italic;
+    list-style: none;
+}
+
+/* ── Compact day plan overview (no inline detail, links to meal detail) ───── */
+.meal-cards--compact .meal-alternatives--compact {
+    grid-template-columns: 1fr auto;
+    align-items: stretch;
+}
+
+.meal-slot-summary {
+    padding: 0.5rem 1rem;
+}
+
+.meal-slot-summary__link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    padding: 0.25rem 0;
+}
+
+.meal-slot-summary__link:hover {
+    color: var(--color-primary);
+}
+
+.meal-slot-summary .eaten-mark {
+    margin-left: 0.35rem;
+    color: var(--color-text-muted);
+}
+
+/* ── Meal detail (dedicated view for single meal slot) ──────────────────────── */
+.meal-detail {
+    max-width: 42rem;
+}
+
+.meal-detail__back {
+    display: inline-block;
+    margin-bottom: 1rem;
+}
+
+.meal-detail__heading {
+    font-size: 1.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.meal-detail__date {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+    margin-left: 0.5rem;
+}
+
+.meal-detail__content {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.meal-detail__card {
+    background: var(--color-white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1rem 1.25rem;
+}
+
+.meal-detail__primary .meal-detail__card {
+    border: 2px solid var(--color-primary);
+}
+
+.meal-detail__secondary .meal-detail__card {
+    border: 1px dashed #dee2e6;
+    background: #f8f9fa;
+}
+
 /* ── Meal slot detail (chosen meal + others + aggregated) ─────────────────── */
 .meal-slot-detail__sections {
     display: flex;

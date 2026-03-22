@@ -220,23 +220,25 @@ function showNetworkError() {
 function initAlternativePicker() {
     document.querySelectorAll('.alt-choose-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            var planId   = this.getAttribute('data-plan-id');
-            var redirect = this.getAttribute('data-redirect') || '/plan/day';
-            var card     = this.closest('.meal-card');
-            if (!card) return;
+            var planId      = this.getAttribute('data-plan-id');
+            var redirect    = this.getAttribute('data-redirect') || '/plan/day';
+            var card        = this.closest('.meal-card');
+            var mealDetail  = this.closest('.meal-detail');
+            if (!card && !mealDetail) return;
 
             postAjax('/plan/choose', { plan_id: planId, redirect_to: redirect })
                 .then(function (json) {
                     if (!json.ok) { showNetworkError(); return; }
 
-                    // New day plan layout: primary/collapsed structure requires full reload
-                    var hasNewLayout = card.querySelector('.meal-slot-primary');
+                    // Meal detail page or day plan with primary/collapsed: full reload
+                    var hasNewLayout = mealDetail || (card && card.querySelector('.meal-slot-primary'));
                     if (hasNewLayout) {
                         window.location.href = redirect;
                         return;
                     }
 
                     // Legacy layout: update visual state in place
+                    if (!card) return;
                     card.querySelectorAll('.alt-option').forEach(function (opt) {
                         var optPlanId = opt.getAttribute('data-plan-id');
                         var isChosen  = optPlanId === planId;
@@ -484,24 +486,27 @@ function initVariantExpand() {
     var collapsedSelectors = '.alt-option--collapsed.meal-slot-collapsed';
 
     if (expandAllBtn) {
-        var hasCollapsed = document.querySelectorAll(collapsedSelectors).length > 0;
+        var collapsedEls = document.querySelectorAll(collapsedSelectors);
+        var hasCollapsed = collapsedEls.length > 0;
         if (!hasCollapsed) {
             expandAllBtn.remove();
-            return;
-        }
-        expandAllBtn.removeAttribute('hidden');
-        expandAllBtn.addEventListener('click', function () {
-            document.querySelectorAll(collapsedSelectors).forEach(function (el) {
-                if (el.getAttribute('data-collapsed') === 'true') {
-                    expandVariant(el);
-                }
+        } else {
+            expandAllBtn.removeAttribute('hidden');
+            expandAllBtn.addEventListener('click', function () {
+                document.querySelectorAll(collapsedSelectors).forEach(function (el) {
+                    if (el.getAttribute('data-collapsed') === 'true') {
+                        expandVariant(el);
+                    }
+                });
             });
-        });
+        }
     }
 
     document.querySelectorAll('.js-expand-variant').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var collapsed = this.closest('.alt-option--collapsed');
+        btn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var collapsed = this.closest('.alt-option--collapsed.meal-slot-collapsed');
             if (!collapsed) return;
 
             if (collapsed.getAttribute('data-collapsed') === 'true') {
