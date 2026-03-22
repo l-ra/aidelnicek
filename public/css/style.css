@@ -504,10 +504,6 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .meal-cards--compact .meal-alternatives--compact {
-        grid-template-columns: 1fr;
-    }
-
     .meal-card__header-row {
         flex-direction: column;
         align-items: flex-start;
@@ -565,8 +561,9 @@ body {
 
 /* ── Compact day plan overview (no inline detail, links to meal detail) ───── */
 .meal-cards--compact .meal-alternatives--compact {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
     align-items: stretch;
+    gap: 0.5rem 0;
 }
 
 .meal-slot-summary {
