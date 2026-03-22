@@ -265,4 +265,16 @@ class ShoppingList
 
         return array_values($aggregated);
     }
+
+    /**
+     * Public wrapper to aggregate ingredients from meal plan rows.
+     * Same logic as internal aggregateIngredients — for reuse in day plan slot detail.
+     *
+     * @param  array $mealPlanRows  Rows from meal_plans; each has 'ingredients' (JSON string).
+     * @return array<array{name: string, quantity: float|null, unit: string|null, category: null}>
+     */
+    public static function aggregateIngredientsFromRows(array $mealPlanRows): array
+    {
+        return self::aggregateIngredients($mealPlanRows);
+    }
 }

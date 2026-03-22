@@ -802,6 +802,12 @@ $router->get('/plan/day', function () use ($projectRoot) {
     $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
     $householdSelections = MealPlan::getHouseholdSelectionsForDay($userId, $weekId, $day);
 
+    $householdSlotDetails = [];
+    foreach (MealPlan::getMealTypeOrder() as $mealType) {
+        $householdSlotDetails[$mealType] = MealPlan::getHouseholdSlotDetail($weekId, $day, $mealType);
+    }
+
+    $currentUser = $user;
     require $projectRoot . '/templates/day_plan.php';
 });
 

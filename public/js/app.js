@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function () {
     initEatenCheckboxes();
     initMealRecipeButtons();
     initSwapDropdown();
+    initVariantExpand();
 
     // ── M4: Nákupní seznam interakce ──────────────────────────────────────────
     initShoppingToggle();
@@ -228,24 +229,28 @@ function initAlternativePicker() {
                 .then(function (json) {
                     if (!json.ok) { showNetworkError(); return; }
 
-                    // Update visual state for all alternatives in this card
+                    // New day plan layout: primary/collapsed structure requires full reload
+                    var hasNewLayout = card.querySelector('.meal-slot-primary');
+                    if (hasNewLayout) {
+                        window.location.href = redirect;
+                        return;
+                    }
+
+                    // Legacy layout: update visual state in place
                     card.querySelectorAll('.alt-option').forEach(function (opt) {
                         var optPlanId = opt.getAttribute('data-plan-id');
                         var isChosen  = optPlanId === planId;
 
                         opt.classList.toggle('is-chosen', isChosen);
 
-                        // Update aria-pressed on the button inside
                         var optBtn = opt.querySelector('.alt-choose-btn');
                         if (optBtn) optBtn.setAttribute('aria-pressed', isChosen ? 'true' : 'false');
 
-                        // Badge update
                         var badge = opt.querySelector('.alt-badge');
                         if (badge) {
                             badge.style.background = isChosen ? '' : '';
                         }
 
-                        // Show/hide the eaten checkbox — only on the chosen option
                         manageEatenCheckbox(opt, isChosen, redirect);
                     });
                 })
@@ -468,6 +473,66 @@ function initSwapDropdown() {
     document.addEventListener('keydown', function (e) {
         if (!modal.hidden && e.key === 'Escape') closeModal();
     });
+}
+
+/**
+ * Day plan: expand/collapse hidden variants.
+ * Per-card expand buttons and header "Rozbalit všechny varianty" button.
+ */
+function initVariantExpand() {
+    var expandAllBtn = document.getElementById('expand-all-variants-btn');
+    var collapsedSelectors = '.alt-option--collapsed.meal-slot-collapsed';
+
+    if (expandAllBtn) {
+        var hasCollapsed = document.querySelectorAll(collapsedSelectors).length > 0;
+        if (!hasCollapsed) {
+            expandAllBtn.remove();
+            return;
+        }
+        expandAllBtn.removeAttribute('hidden');
+        expandAllBtn.addEventListener('click', function () {
+            document.querySelectorAll(collapsedSelectors).forEach(function (el) {
+                if (el.getAttribute('data-collapsed') === 'true') {
+                    expandVariant(el);
+                }
+            });
+        });
+    }
+
+    document.querySelectorAll('.js-expand-variant').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var collapsed = this.closest('.alt-option--collapsed');
+            if (!collapsed) return;
+
+            if (collapsed.getAttribute('data-collapsed') === 'true') {
+                expandVariant(collapsed);
+            } else {
+                collapseVariant(collapsed);
+            }
+        });
+    });
+}
+
+function expandVariant(el) {
+    var content = el.querySelector('.alt-option__collapsed-content');
+    var btn = el.querySelector('.alt-expand-btn');
+    if (!content || !btn) return;
+
+    content.hidden = false;
+    el.setAttribute('data-collapsed', 'false');
+    btn.setAttribute('aria-expanded', 'true');
+    btn.querySelector('.alt-expand-btn__label').textContent = 'Sbalit variantu ' + (el.getAttribute('data-alt') || '2');
+}
+
+function collapseVariant(el) {
+    var content = el.querySelector('.alt-option__collapsed-content');
+    var btn = el.querySelector('.alt-expand-btn');
+    if (!content || !btn) return;
+
+    content.hidden = true;
+    el.setAttribute('data-collapsed', 'true');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.querySelector('.alt-expand-btn__label').textContent = 'Rozbalit variantu ' + (el.getAttribute('data-alt') || '2');
 }
 
 /**

@@ -387,6 +387,78 @@ class MealPlan
         return $result;
     }
 
+    /**
+     * Vrátí detail slotu pro daný den a typ jídla: zvolená jídla všech členů domácnosti
+     * a agregované ingredience.
+     *
+     * Struktura vraceného pole:
+     * [
+     *   'users' => [
+     *     ['user_name' => 'Jméno', 'meal_name' => ..., 'description' => ..., 'ingredients' => [...], 'plan_id' => ..., 'has_recipe' => ...],
+     *     ...
+     *   ],
+     *   'aggregated_ingredients' => [['name' => ..., 'quantity' => ..., 'unit' => ...], ...]
+     * ]
+     */
+    public static function getHouseholdSlotDetail(int $weekId, int $dayOfWeek, string $mealType): array
+    {
+        if (!in_array($mealType, self::MEAL_TYPE_ORDER, true)) {
+            return ['users' => [], 'aggregated_ingredients' => []];
+        }
+
+        $stmt = Database::get()->prepare(
+            'SELECT mp.*, u.name AS user_name,
+                    CASE
+                        WHEN mp.proposal_meal_id IS NOT NULL
+                             AND EXISTS (
+                                SELECT 1 FROM meal_recipes mr
+                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                             )
+                        THEN 1 ELSE 0
+                    END AS has_recipe
+             FROM meal_plans mp
+             JOIN users u ON u.id = mp.user_id
+             WHERE mp.week_id = ? AND mp.day_of_week = ? AND mp.meal_type = ?
+               AND (
+                    mp.is_chosen = 1
+                    OR (
+                        mp.alternative = 1
+                        AND NOT EXISTS (
+                            SELECT 1 FROM meal_plans mp2
+                            WHERE mp2.week_id = mp.week_id
+                              AND mp2.user_id = mp.user_id
+                              AND mp2.day_of_week = mp.day_of_week
+                              AND mp2.meal_type = mp.meal_type
+                              AND mp2.is_chosen = 1
+                        )
+                    )
+               )
+             ORDER BY u.name COLLATE NOCASE ASC'
+        );
+        $stmt->execute([$weekId, $dayOfWeek, $mealType]);
+        $rows = $stmt->fetchAll();
+
+        $users = [];
+        foreach ($rows as $row) {
+            $ingredients = [];
+            if (!empty($row['ingredients'])) {
+                $ingredients = json_decode($row['ingredients'], true) ?? [];
+            }
+            $users[] = [
+                'user_name'   => trim((string) ($row['user_name'] ?? '')),
+                'meal_name'   => $row['meal_name'] ?? '',
+                'description' => $row['description'] ?? '',
+                'ingredients' => $ingredients,
+                'plan_id'     => (int) $row['id'],
+                'has_recipe'  => (int) ($row['has_recipe'] ?? 0) === 1,
+            ];
+        }
+
+        $aggregated = ShoppingList::aggregateIngredientsFromRows($rows);
+
+        return ['users' => $users, 'aggregated_ingredients' => $aggregated];
+    }
+
     public static function getWeekPlan(int $userId, int $weekId): array
     {
         $stmt = Database::get()->prepare(
