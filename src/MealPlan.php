@@ -522,6 +522,72 @@ class MealPlan
         return true;
     }
 
+    /**
+     * Vybere variantu jídla (alt1/alt2) pro všechny členy domácnosti.
+     * Každý uživatel s plánem v daném týdnu dostane v daném slotu stejnou alternativu.
+     *
+     * @param int $planId ID meal_plans záznamu (libovolný uživatel)
+     * @return bool
+     */
+    public static function chooseAlternativeForHousehold(int $planId): bool
+    {
+        $db = Database::get();
+
+        $stmt = $db->prepare(
+            'SELECT week_id, day_of_week, meal_type, alternative FROM meal_plans WHERE id = ?'
+        );
+        $stmt->execute([$planId]);
+        $plan = $stmt->fetch();
+
+        if ($plan === false) {
+            return false;
+        }
+
+        $weekId = (int) $plan['week_id'];
+        $dayOfWeek = (int) $plan['day_of_week'];
+        $mealType = $plan['meal_type'];
+        $alt = (int) $plan['alternative'];
+
+        $userIds = self::getUserIdsWithPlansForWeek($weekId);
+        if (empty($userIds)) {
+            return false;
+        }
+
+        $db->beginTransaction();
+        try {
+            foreach ($userIds as $userId) {
+                $stmt = $db->prepare(
+                    'SELECT id FROM meal_plans
+                     WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ? AND alternative = ?'
+                );
+                $stmt->execute([$userId, $weekId, $dayOfWeek, $mealType, $alt]);
+                $targetRow = $stmt->fetch();
+
+                if ($targetRow === false) {
+                    continue;
+                }
+
+                $targetPlanId = (int) $targetRow['id'];
+
+                $db->prepare(
+                    'UPDATE meal_plans SET is_chosen = 0
+                     WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+                )->execute([$userId, $weekId, $dayOfWeek, $mealType]);
+
+                $db->prepare(
+                    'UPDATE meal_plans SET is_chosen = 1 WHERE id = ? AND user_id = ?'
+                )->execute([$targetPlanId, $userId]);
+            }
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            return false;
+        }
+
+        return true;
+    }
+
     public static function toggleEaten(int $userId, int $planId): bool
     {
         $db   = Database::get();

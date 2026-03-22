@@ -971,6 +971,35 @@ $router->post('/plan/choose', $requireCsrf('/plan/day', function () use ($projec
     exit;
 }));
 
+$router->post('/plan/choose-household', $requireCsrf('/plan/day', function () use ($projectRoot) {
+    Auth::requireLogin();
+
+    $planId     = isset($_POST['plan_id']) ? (int) $_POST['plan_id'] : 0;
+    $redirectTo = $_POST['redirect_to'] ?? '/plan/day';
+    $isAjax     = ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest';
+
+    if ($planId <= 0) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
+            exit;
+        }
+        header('Location: ' . $redirectTo);
+        exit;
+    }
+
+    $ok = MealPlan::chooseAlternativeForHousehold($planId);
+
+    if ($isAjax) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => $ok]);
+        exit;
+    }
+
+    header('Location: ' . $redirectTo);
+    exit;
+}));
+
 $router->post('/plan/eaten', $requireCsrf('/plan/day', function () use ($projectRoot) {
     $user   = Auth::requireLogin();
     $userId = (int) $user['id'];

@@ -664,6 +664,11 @@ body {
     margin-left: 0.5rem;
 }
 
+.meal-slot-summary__ingredients {
+    margin-top: 0.35rem;
+    margin-left: 0;
+}
+
 .meal-slot-detail__aggregated ul {
     font-weight: 500;
 }
@@ -698,6 +703,21 @@ body {
     color: var(--color-text-muted);
 }
 
+.alt-option__header {
+    margin-bottom: 0.35rem;
+}
+
+.alt-choose-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.35rem;
+}
+
+.alt-choose-actions--chosen .alt-choose-btn--me {
+    opacity: 0.9;
+}
+
 .alt-choose-btn {
     display: block;
     width: 100%;
@@ -709,6 +729,17 @@ body {
     font-family: inherit;
     font-size: 1rem;
     color: inherit;
+}
+
+.alt-choose-btn.btn {
+    display: inline-block;
+    width: auto;
+    text-align: center;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 0.3rem;
+    background: var(--color-surface);
+    font-size: 0.8rem;
 }
 
 .alt-badge {

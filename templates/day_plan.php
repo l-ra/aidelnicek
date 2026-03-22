@@ -137,6 +137,27 @@ ob_start();
                                     <span class="eaten-mark" title="Snězeno">&#10003;</span>
                                 <?php endif; ?>
                             </a>
+                            <?php
+                            $chosenIngredients = !empty($chosenAlt['ingredients']) ? (json_decode($chosenAlt['ingredients'], true) ?? []) : [];
+                            ?>
+                            <?php if (!empty($chosenIngredients)): ?>
+                                <ul class="alt-ingredients alt-ingredients--compact meal-slot-summary__ingredients">
+                                    <?php foreach (array_slice($chosenIngredients, 0, 5) as $ing): ?>
+                                        <?php if (is_array($ing)): ?>
+                                            <li><?= htmlspecialchars($ing['name'] ?? '') ?>
+                                                <?php if (!empty($ing['quantity'])): ?>
+                                                    — <?= htmlspecialchars((string) $ing['quantity']) ?>
+                                                    <?php if (!empty($ing['unit'])): ?> <?= htmlspecialchars($ing['unit']) ?><?php endif; ?>
+                                                <?php endif; ?></li>
+                                        <?php else: ?>
+                                            <li><?= htmlspecialchars((string) $ing) ?></li>
+                                        <?php endif; ?>
+                                    <?php endforeach; ?>
+                                    <?php if (count($chosenIngredients) > 5): ?>
+                                        <li class="alt-ingredients__more"><a href="<?= htmlspecialchars($mealDetailUrl) ?>">… celý detail</a></li>
+                                    <?php endif; ?>
+                                </ul>
+                            <?php endif; ?>
                         </div>
                     <?php endif; ?>
 
@@ -156,14 +177,26 @@ ob_start();
                                 $ingredients = !empty($otherAlt['ingredients']) ? (json_decode($otherAlt['ingredients'], true) ?? []) : [];
                                 ?>
                                 <div class="alt-option__collapsed-inner">
-                                    <button type="button"
-                                            class="alt-choose-btn"
-                                            data-plan-id="<?= (int) $otherAlt['id'] ?>"
-                                            data-redirect="<?= htmlspecialchars($currentRedirect) ?>"
-                                            aria-pressed="false">
+                                    <div class="alt-option__header">
                                         <span class="alt-badge">Varianta <?= $otherAltNum ?></span>
                                         <span class="alt-name"><?= htmlspecialchars($otherAlt['meal_name']) ?></span>
-                                    </button>
+                                    </div>
+                                    <div class="alt-choose-actions">
+                                        <button type="button"
+                                                class="btn btn-secondary btn-sm alt-choose-btn alt-choose-btn--me"
+                                                data-plan-id="<?= (int) $otherAlt['id'] ?>"
+                                                data-redirect="<?= htmlspecialchars($currentRedirect) ?>"
+                                                aria-pressed="false">
+                                            Vybrat pro mě
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-secondary btn-sm alt-choose-btn alt-choose-btn--household"
+                                                data-plan-id="<?= (int) $otherAlt['id'] ?>"
+                                                data-redirect="<?= htmlspecialchars($currentRedirect) ?>"
+                                                aria-pressed="false">
+                                            Vybrat pro všechny
+                                        </button>
+                                    </div>
                                     <?php if (!empty($otherAlt['description'])): ?>
                                         <p class="alt-desc"><?= htmlspecialchars($otherAlt['description']) ?></p>
                                     <?php endif; ?>
