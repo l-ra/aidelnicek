@@ -25,14 +25,26 @@ $mealDetailRedirect = '/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlen
             ?>
             <div class="meal-detail__primary alt-option is-chosen" data-plan-id="<?= (int) $chosenAlt['id'] ?>">
                 <div class="meal-detail__card">
-                    <button type="button"
-                            class="alt-choose-btn"
-                            data-plan-id="<?= (int) $chosenAlt['id'] ?>"
-                            data-redirect="<?= htmlspecialchars($mealDetailRedirect) ?>"
-                            aria-pressed="true">
+                    <div class="alt-option__header">
                         <span class="alt-badge">Varianta <?= $chosenAltNum ?></span>
                         <span class="alt-name"><?= htmlspecialchars($chosenAlt['meal_name']) ?></span>
-                    </button>
+                    </div>
+                    <div class="alt-choose-actions alt-choose-actions--chosen">
+                        <button type="button"
+                                class="btn btn-secondary btn-sm alt-choose-btn alt-choose-btn--me"
+                                data-plan-id="<?= (int) $chosenAlt['id'] ?>"
+                                data-redirect="<?= htmlspecialchars($mealDetailRedirect) ?>"
+                                aria-pressed="true">
+                            Vybrat pro mě
+                        </button>
+                        <button type="button"
+                                class="btn btn-secondary btn-sm alt-choose-btn alt-choose-btn--household"
+                                data-plan-id="<?= (int) $chosenAlt['id'] ?>"
+                                data-redirect="<?= htmlspecialchars($mealDetailRedirect) ?>"
+                                aria-pressed="false">
+                            Vybrat pro všechny
+                        </button>
+                    </div>
 
                     <?php if (!empty($chosenAlt['description'])): ?>
                         <p class="alt-desc"><?= htmlspecialchars($chosenAlt['description']) ?></p>
@@ -149,14 +161,26 @@ $mealDetailRedirect = '/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlen
                  data-plan-id="<?= (int) $otherAlt['id'] ?>"
                  data-alt="<?= $otherAltNum ?>">
                 <div class="meal-detail__card">
-                    <button type="button"
-                            class="alt-choose-btn"
-                            data-plan-id="<?= (int) $otherAlt['id'] ?>"
-                            data-redirect="<?= htmlspecialchars($mealDetailRedirect) ?>"
-                            aria-pressed="false">
+                    <div class="alt-option__header">
                         <span class="alt-badge">Varianta <?= $otherAltNum ?></span>
                         <span class="alt-name"><?= htmlspecialchars($otherAlt['meal_name']) ?></span>
-                    </button>
+                    </div>
+                    <div class="alt-choose-actions">
+                        <button type="button"
+                                class="btn btn-secondary btn-sm alt-choose-btn alt-choose-btn--me"
+                                data-plan-id="<?= (int) $otherAlt['id'] ?>"
+                                data-redirect="<?= htmlspecialchars($mealDetailRedirect) ?>"
+                                aria-pressed="false">
+                            Vybrat pro mě
+                        </button>
+                        <button type="button"
+                                class="btn btn-secondary btn-sm alt-choose-btn alt-choose-btn--household"
+                                data-plan-id="<?= (int) $otherAlt['id'] ?>"
+                                data-redirect="<?= htmlspecialchars($mealDetailRedirect) ?>"
+                                aria-pressed="false">
+                            Vybrat pro všechny
+                        </button>
+                    </div>
                     <?php if (!empty($otherAlt['description'])): ?>
                         <p class="alt-desc"><?= htmlspecialchars($otherAlt['description']) ?></p>
                     <?php endif; ?>

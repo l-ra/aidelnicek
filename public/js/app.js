@@ -214,8 +214,7 @@ function showNetworkError() {
 }
 
 /**
- * M3: Clicking an alternative option sends a /plan/choose request and updates
- * the UI to reflect the new selection state.
+ * M3: Clicking "Vybrat pro mě" or "Vybrat pro všechny" sends request and updates UI.
  */
 function initAlternativePicker() {
     document.querySelectorAll('.alt-choose-btn').forEach(function (btn) {
@@ -226,7 +225,10 @@ function initAlternativePicker() {
             var mealDetail  = this.closest('.meal-detail');
             if (!card && !mealDetail) return;
 
-            postAjax('/plan/choose', { plan_id: planId, redirect_to: redirect })
+            var forHousehold = this.classList.contains('alt-choose-btn--household');
+            var url = forHousehold ? '/plan/choose-household' : '/plan/choose';
+
+            postAjax(url, { plan_id: planId, redirect_to: redirect })
                 .then(function (json) {
                     if (!json.ok) { showNetworkError(); return; }
 
