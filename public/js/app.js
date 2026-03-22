@@ -482,11 +482,45 @@ function initSwapDropdown() {
 /**
  * Day plan: expand/collapse hidden variants.
  * Per-card expand buttons and header "Rozbalit všechny varianty" button.
+ * Uses event delegation so clicks work even when DOM is dynamic.
  */
 function initVariantExpand() {
-    var expandAllBtn = document.getElementById('expand-all-variants-btn');
     var collapsedSelectors = '.alt-option--collapsed.meal-slot-collapsed';
 
+    // Header "Rozbalit všechny varianty" button
+    document.body.addEventListener('click', function (e) {
+        var expandAllBtn = e.target.closest('#expand-all-variants-btn');
+        if (!expandAllBtn) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        document.querySelectorAll(collapsedSelectors).forEach(function (el) {
+            if (el.getAttribute('data-collapsed') === 'true') {
+                expandVariant(el);
+            }
+        });
+    });
+
+    // Per-card "Rozbalit / Sbalit variantu" buttons (event delegation)
+    document.body.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-expand-variant');
+        if (!btn) return;
+
+        var collapsed = btn.closest('.alt-option--collapsed.meal-slot-collapsed');
+        if (!collapsed) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (collapsed.getAttribute('data-collapsed') === 'true') {
+            expandVariant(collapsed);
+        } else {
+            collapseVariant(collapsed);
+        }
+    });
+
+    // Show "Rozbalit všechny varianty" only when collapsed variants exist
+    var expandAllBtn = document.getElementById('expand-all-variants-btn');
     if (expandAllBtn) {
         var collapsedEls = document.querySelectorAll(collapsedSelectors);
         var hasCollapsed = collapsedEls.length > 0;
@@ -494,30 +528,8 @@ function initVariantExpand() {
             expandAllBtn.remove();
         } else {
             expandAllBtn.removeAttribute('hidden');
-            expandAllBtn.addEventListener('click', function () {
-                document.querySelectorAll(collapsedSelectors).forEach(function (el) {
-                    if (el.getAttribute('data-collapsed') === 'true') {
-                        expandVariant(el);
-                    }
-                });
-            });
         }
     }
-
-    document.querySelectorAll('.js-expand-variant').forEach(function (btn) {
-        btn.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var collapsed = this.closest('.alt-option--collapsed.meal-slot-collapsed');
-            if (!collapsed) return;
-
-            if (collapsed.getAttribute('data-collapsed') === 'true') {
-                expandVariant(collapsed);
-            } else {
-                collapseVariant(collapsed);
-            }
-        });
-    });
 }
 
 function expandVariant(el) {
