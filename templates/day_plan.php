@@ -9,7 +9,6 @@ $currentRedirect = '/plan/day?day=' . $day;
 $householdSelections = $householdSelections ?? [];
 $weekPlan = $weekPlan ?? [];
 $weekId = $weekId ?? 0;
-$householdSlotDetails = $householdSlotDetails ?? [];
 
 // Day navigation
 $prevDay = $day > 1 ? $day - 1 : null;
@@ -53,7 +52,7 @@ ob_start();
         </button>
     </div>
 
-    <div class="meal-cards">
+    <div class="meal-cards meal-cards--compact">
         <?php foreach (MealPlan::getMealTypeOrder() as $mealType): ?>
             <?php
             $slot = $dayPlan[$mealType] ?? ['alt1' => null, 'alt2' => null];
@@ -69,8 +68,11 @@ ob_start();
             if ($chosenAltNum === null) {
                 $chosenAltNum = $alt1 !== null ? 1 : ($alt2 !== null ? 2 : null);
             }
+            $chosenAlt = $chosenAltNum !== null ? ($chosenAltNum === 1 ? $alt1 : $alt2) : ($alt1 ?? $alt2);
+            $otherAlt = ($chosenAltNum === 1 ? $alt2 : $alt1);
+            $mealDetailUrl = '/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlencode($mealType);
             ?>
-            <div class="meal-card" data-meal-type="<?= htmlspecialchars($mealType) ?>"
+            <div class="meal-card meal-card--compact" data-meal-type="<?= htmlspecialchars($mealType) ?>"
                  data-week-id="<?= (int) $weekId ?>"
                  data-current-day="<?= (int) $day ?>"
                  data-redirect="<?= htmlspecialchars($currentRedirect) ?>">
@@ -120,140 +122,27 @@ ob_start();
                     </div>
                     <?php endif; ?>
                 </div>
-                <div class="meal-alternatives">
-                    <?php
-                    $chosenAlt = $chosenAltNum !== null ? ($chosenAltNum === 1 ? $alt1 : $alt2) : ($alt1 ?? $alt2);
-                    $otherAlt = ($chosenAltNum === 1 ? $alt2 : $alt1);
-                    $slotDetail = $householdSlotDetails[$mealType] ?? ['users' => [], 'aggregated_ingredients' => []];
-                    $currentUserName = $currentUser['name'] ?? '';
-                    ?>
-                    <!-- Vybraná varianta: zobrazí se vždy -->
+                <div class="meal-alternatives meal-alternatives--compact">
                     <?php if ($chosenAlt !== null): ?>
                         <?php
                         $isEaten = (bool) $chosenAlt['is_eaten'];
-                        $hasStoredRecipe = (int) ($chosenAlt['has_recipe'] ?? 0) === 1;
                         ?>
-                        <div class="alt-option is-chosen meal-slot-primary"
+                        <div class="alt-option is-chosen meal-slot-primary meal-slot-summary"
                              data-plan-id="<?= (int) $chosenAlt['id'] ?>"
                              data-alt="<?= $chosenAltNum ?>">
-                            <button type="button"
-                                    class="alt-choose-btn"
-                                    data-plan-id="<?= (int) $chosenAlt['id'] ?>"
-                                    data-redirect="<?= htmlspecialchars($currentRedirect) ?>"
-                                    aria-pressed="true">
+                            <a href="<?= htmlspecialchars($mealDetailUrl) ?>" class="meal-slot-summary__link" data-meal-detail>
                                 <span class="alt-badge">Varianta <?= $chosenAltNum ?></span>
                                 <span class="alt-name"><?= htmlspecialchars($chosenAlt['meal_name']) ?></span>
-                            </button>
-
-                            <div class="meal-slot-detail" id="slot-detail-<?= htmlspecialchars($mealType) ?>">
-                                <?php if (!empty($chosenAlt['description'])): ?>
-                                    <p class="alt-desc"><?= htmlspecialchars($chosenAlt['description']) ?></p>
+                                <?php if ($isEaten): ?>
+                                    <span class="eaten-mark" title="Snězeno">&#10003;</span>
                                 <?php endif; ?>
-
-                                <div class="meal-slot-detail__sections">
-                                    <div class="meal-slot-detail__chosen">
-                                        <h4 class="meal-slot-detail__heading">Vybrané jídlo</h4>
-                                        <?php
-                                        $chosenIng = !empty($chosenAlt['ingredients']) ? (json_decode($chosenAlt['ingredients'], true) ?? []) : [];
-                                        ?>
-                                        <?php if (!empty($chosenIng)): ?>
-                                            <ul class="alt-ingredients">
-                                                <?php foreach ($chosenIng as $ing): ?>
-                                                    <?php if (is_array($ing)): ?>
-                                                        <li>
-                                                            <?= htmlspecialchars($ing['name'] ?? '') ?>
-                                                            <?php if (!empty($ing['quantity'])): ?>
-                                                                — <?= htmlspecialchars((string) $ing['quantity']) ?>
-                                                                <?php if (!empty($ing['unit'])): ?> <?= htmlspecialchars($ing['unit']) ?><?php endif; ?>
-                                                            <?php endif; ?>
-                                                        </li>
-                                                    <?php else: ?>
-                                                        <li><?= htmlspecialchars((string) $ing) ?></li>
-                                                    <?php endif; ?>
-                                                <?php endforeach; ?>
-                                            </ul>
-                                        <?php endif; ?>
-                                    </div>
-
-                                    <?php
-                                    $otherUsersInSlot = array_filter($slotDetail['users'], fn($u) => $u['user_name'] !== $currentUserName);
-                                    ?>
-                                    <?php if (!empty($otherUsersInSlot)): ?>
-                                        <div class="meal-slot-detail__others">
-                                            <h4 class="meal-slot-detail__heading">Ostatní uživatelé</h4>
-                                            <?php foreach ($otherUsersInSlot as $ou): ?>
-                                                <div class="meal-slot-detail__other-variant">
-                                                    <span class="meal-slot-detail__other-user"><?= htmlspecialchars($ou['user_name']) ?>:</span>
-                                                    <span class="meal-slot-detail__other-meal"><?= htmlspecialchars($ou['meal_name']) ?></span>
-                                                    <?php if (!empty($ou['ingredients'])): ?>
-                                                        <ul class="alt-ingredients alt-ingredients--compact">
-                                                            <?php foreach ($ou['ingredients'] as $ing): ?>
-                                                                <?php if (is_array($ing)): ?>
-                                                                    <li><?= htmlspecialchars($ing['name'] ?? '') ?>
-                                                                        <?php if (!empty($ing['quantity'])): ?>
-                                                                            — <?= htmlspecialchars((string) $ing['quantity']) ?>
-                                                                            <?php if (!empty($ing['unit'])): ?> <?= htmlspecialchars($ing['unit']) ?><?php endif; ?>
-                                                                        <?php endif; ?></li>
-                                                                <?php else: ?>
-                                                                    <li><?= htmlspecialchars((string) $ing) ?></li>
-                                                                <?php endif; ?>
-                                                            <?php endforeach; ?>
-                                                        </ul>
-                                                    <?php endif; ?>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                    <?php endif; ?>
-
-                                    <?php if (!empty($slotDetail['aggregated_ingredients'])): ?>
-                                        <div class="meal-slot-detail__aggregated">
-                                            <h4 class="meal-slot-detail__heading">Ingredience dohromady pro všechny</h4>
-                                            <ul class="alt-ingredients">
-                                                <?php foreach ($slotDetail['aggregated_ingredients'] as $ing): ?>
-                                                    <li>
-                                                        <?= htmlspecialchars($ing['name'] ?? '') ?>
-                                                        <?php if (isset($ing['quantity']) && $ing['quantity'] !== null): ?>
-                                                            — <?= htmlspecialchars((string) $ing['quantity']) ?>
-                                                            <?php if (!empty($ing['unit'])): ?> <?= htmlspecialchars($ing['unit']) ?><?php endif; ?>
-                                                        <?php endif; ?>
-                                                    </li>
-                                                <?php endforeach; ?>
-                                            </ul>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-
-                                <button type="button"
-                                        class="btn btn-secondary btn-sm meal-recipe-btn"
-                                        data-plan-id="<?= (int) $chosenAlt['id'] ?>"
-                                        data-has-recipe="<?= $hasStoredRecipe ? '1' : '0' ?>"
-                                        aria-expanded="false">
-                                    <?= $hasStoredRecipe ? 'Zobraz recept' : 'Generuj recept' ?>
-                                </button>
-                                <div class="meal-recipe-panel" hidden>
-                                    <p class="meal-recipe-meta" hidden></p>
-                                    <pre class="meal-recipe-text"></pre>
-                                    <a href="/plan/recipe/view?plan_id=<?= (int) $chosenAlt['id'] ?>"
-                                       target="_blank" rel="noopener"
-                                       class="meal-recipe-open-tab">Otevřít v nové záložce</a>
-                                </div>
-
-                                <label class="eaten-checkbox" data-plan-id="<?= (int) $chosenAlt['id'] ?>">
-                                    <input type="checkbox"
-                                           class="eaten-checkbox__input"
-                                           data-plan-id="<?= (int) $chosenAlt['id'] ?>"
-                                           data-redirect="<?= htmlspecialchars($currentRedirect) ?>"
-                                           <?= $isEaten ? 'checked' : '' ?>>
-                                    <span class="eaten-checkbox__label">Snězeno</span>
-                                </label>
-                            </div>
+                            </a>
                         </div>
                     <?php endif; ?>
 
-                    <!-- Druhá varianta: sbalená, rozbalitelná -->
                     <?php if ($otherAlt !== null): ?>
                         <?php $otherAltNum = $chosenAltNum === 1 ? 2 : 1; ?>
-                        <div class="alt-option alt-option--collapsed meal-slot-collapsed" data-collapsed="true"
+                        <div class="alt-option alt-option--collapsed meal-slot-collapsed js-collapsed-variant" data-collapsed="true"
                              data-plan-id="<?= (int) $otherAlt['id'] ?>"
                              data-alt="<?= $otherAltNum ?>">
                             <button type="button" class="alt-expand-btn js-expand-variant" aria-expanded="false">
@@ -262,58 +151,51 @@ ob_start();
                             </button>
                             <div class="alt-option__collapsed-content" hidden>
                                 <?php
-                                $isEaten = (bool) $otherAlt['is_eaten'];
                                 $hasStoredRecipe = (int) ($otherAlt['has_recipe'] ?? 0) === 1;
                                 $otherMembers = $householdSelections[$mealType]['alt' . $otherAltNum] ?? [];
                                 $ingredients = !empty($otherAlt['ingredients']) ? (json_decode($otherAlt['ingredients'], true) ?? []) : [];
                                 ?>
-                                <button type="button"
-                                        class="alt-choose-btn"
-                                        data-plan-id="<?= (int) $otherAlt['id'] ?>"
-                                        data-redirect="<?= htmlspecialchars($currentRedirect) ?>"
-                                        aria-pressed="false">
-                                    <span class="alt-badge">Varianta <?= $otherAltNum ?></span>
-                                    <span class="alt-name"><?= htmlspecialchars($otherAlt['meal_name']) ?></span>
-                                </button>
-                                <?php if (!empty($otherAlt['description'])): ?>
-                                    <p class="alt-desc"><?= htmlspecialchars($otherAlt['description']) ?></p>
-                                <?php endif; ?>
-                                <?php if (!empty($ingredients)): ?>
-                                    <ul class="alt-ingredients">
-                                        <?php foreach ($ingredients as $ing): ?>
-                                            <?php if (is_array($ing)): ?>
-                                                <li><?= htmlspecialchars($ing['name'] ?? '') ?>
-                                                    <?php if (!empty($ing['quantity'])): ?>
-                                                        — <?= htmlspecialchars((string) $ing['quantity']) ?>
-                                                        <?php if (!empty($ing['unit'])): ?> <?= htmlspecialchars($ing['unit']) ?><?php endif; ?>
-                                                    <?php endif; ?></li>
-                                            <?php else: ?>
-                                                <li><?= htmlspecialchars((string) $ing) ?></li>
-                                            <?php endif; ?>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                <?php endif; ?>
-                                <?php if (!empty($otherMembers)): ?>
-                                    <div class="alt-household-pref">
-                                        <span class="alt-household-pref__label">Zvolili:</span>
-                                        <span class="alt-household-pref__users">
-                                            <?php foreach ($otherMembers as $memberName): ?>
-                                                <span class="alt-household-pref__user"><?= htmlspecialchars((string) $memberName) ?></span>
+                                <div class="alt-option__collapsed-inner">
+                                    <button type="button"
+                                            class="alt-choose-btn"
+                                            data-plan-id="<?= (int) $otherAlt['id'] ?>"
+                                            data-redirect="<?= htmlspecialchars($currentRedirect) ?>"
+                                            aria-pressed="false">
+                                        <span class="alt-badge">Varianta <?= $otherAltNum ?></span>
+                                        <span class="alt-name"><?= htmlspecialchars($otherAlt['meal_name']) ?></span>
+                                    </button>
+                                    <?php if (!empty($otherAlt['description'])): ?>
+                                        <p class="alt-desc"><?= htmlspecialchars($otherAlt['description']) ?></p>
+                                    <?php endif; ?>
+                                    <?php if (!empty($ingredients)): ?>
+                                        <ul class="alt-ingredients alt-ingredients--compact">
+                                            <?php foreach (array_slice($ingredients, 0, 5) as $ing): ?>
+                                                <?php if (is_array($ing)): ?>
+                                                    <li><?= htmlspecialchars($ing['name'] ?? '') ?>
+                                                        <?php if (!empty($ing['quantity'])): ?>
+                                                            — <?= htmlspecialchars((string) $ing['quantity']) ?>
+                                                            <?php if (!empty($ing['unit'])): ?> <?= htmlspecialchars($ing['unit']) ?><?php endif; ?>
+                                                        <?php endif; ?></li>
+                                                <?php else: ?>
+                                                    <li><?= htmlspecialchars((string) $ing) ?></li>
+                                                <?php endif; ?>
                                             <?php endforeach; ?>
-                                        </span>
-                                    </div>
-                                <?php endif; ?>
-                                <button type="button" class="btn btn-secondary btn-sm meal-recipe-btn"
-                                        data-plan-id="<?= (int) $otherAlt['id'] ?>"
-                                        data-has-recipe="<?= $hasStoredRecipe ? '1' : '0' ?>" aria-expanded="false">
-                                    <?= $hasStoredRecipe ? 'Zobraz recept' : 'Generuj recept' ?>
-                                </button>
-                                <div class="meal-recipe-panel" hidden>
-                                    <p class="meal-recipe-meta" hidden></p>
-                                    <pre class="meal-recipe-text"></pre>
-                                    <a href="/plan/recipe/view?plan_id=<?= (int) $otherAlt['id'] ?>"
-                                       target="_blank" rel="noopener"
-                                       class="meal-recipe-open-tab">Otevřít v nové záložce</a>
+                                            <?php if (count($ingredients) > 5): ?>
+                                                <li class="alt-ingredients__more"><a href="<?= htmlspecialchars($mealDetailUrl) ?>">… celý detail</a></li>
+                                            <?php endif; ?>
+                                        </ul>
+                                    <?php endif; ?>
+                                    <?php if (!empty($otherMembers)): ?>
+                                        <div class="alt-household-pref">
+                                            <span class="alt-household-pref__label">Zvolili:</span>
+                                            <span class="alt-household-pref__users">
+                                                <?php foreach ($otherMembers as $memberName): ?>
+                                                    <span class="alt-household-pref__user"><?= htmlspecialchars((string) $memberName) ?></span>
+                                                <?php endforeach; ?>
+                                            </span>
+                                        </div>
+                                    <?php endif; ?>
+                                    <a href="<?= htmlspecialchars($mealDetailUrl) ?>" class="btn btn-secondary btn-sm">Otevřít detail</a>
                                 </div>
                             </div>
                         </div>

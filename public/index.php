@@ -802,13 +802,55 @@ $router->get('/plan/day', function () use ($projectRoot) {
     $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
     $householdSelections = MealPlan::getHouseholdSelectionsForDay($userId, $weekId, $day);
 
-    $householdSlotDetails = [];
-    foreach (MealPlan::getMealTypeOrder() as $mealType) {
-        $householdSlotDetails[$mealType] = MealPlan::getHouseholdSlotDetail($weekId, $day, $mealType);
-    }
-
     $currentUser = $user;
     require $projectRoot . '/templates/day_plan.php';
+});
+
+$router->get('/plan/day/meal', function () use ($projectRoot) {
+    $user   = Auth::requireLogin();
+    $userId = (int) $user['id'];
+
+    $week     = MealPlan::getOrCreateCurrentWeek();
+    $weekId   = (int) $week['id'];
+    $todayIso = (int) date('N');
+
+    $day      = isset($_GET['day']) ? (int) $_GET['day'] : $todayIso;
+    $day      = max(1, min(7, $day));
+    $mealType = isset($_GET['meal_type']) ? (string) $_GET['meal_type'] : '';
+
+    $validMealTypes = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
+    if (!in_array($mealType, $validMealTypes, true)) {
+        header('Location: /plan/day?day=' . $day);
+        exit;
+    }
+
+    MealPlan::ensureSingleChosenPerSlot($userId, $weekId);
+    $dayPlan = MealPlan::getDayPlan($userId, $weekId, $day);
+    $householdSelections = MealPlan::getHouseholdSelectionsForDay($userId, $weekId, $day);
+    $slotDetail = MealPlan::getHouseholdSlotDetail($weekId, $day, $mealType);
+
+    $slot = $dayPlan[$mealType] ?? ['alt1' => null, 'alt2' => null];
+    $alt1 = $slot['alt1'];
+    $alt2 = $slot['alt2'];
+    $chosenAltNum = null;
+    foreach ([1 => $alt1, 2 => $alt2] as $candidateAltNum => $candidateAlt) {
+        if ($candidateAlt !== null && (int) ($candidateAlt['is_chosen'] ?? 0) === 1) {
+            $chosenAltNum = $candidateAltNum;
+            break;
+        }
+    }
+    if ($chosenAltNum === null) {
+        $chosenAltNum = $alt1 !== null ? 1 : ($alt2 !== null ? 2 : null);
+    }
+    $chosenAlt = $chosenAltNum !== null ? ($chosenAltNum === 1 ? $alt1 : $alt2) : ($alt1 ?? $alt2);
+    $otherAlt  = ($chosenAltNum === 1 ? $alt2 : $alt1);
+
+    $weekStart = new DateTimeImmutable('monday this week');
+    $dayDate   = $weekStart->modify('+' . ($day - 1) . ' days');
+    $currentRedirect = '/plan/day?day=' . $day;
+
+    $currentUser = $user;
+    require $projectRoot . '/templates/meal_detail.php';
 });
 
 $router->post('/plan/swap', $requireCsrf('/plan/day', function () use ($projectRoot) {
