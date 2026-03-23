@@ -361,6 +361,21 @@ class Database
             CREATE INDEX IF NOT EXISTS idx_generation_jobs_status_projection
                 ON generation_jobs(status, projection_status);
             SQL,
+            <<<'SQL'
+            CREATE TABLE IF NOT EXISTS email_change_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                new_email TEXT NOT NULL,
+                old_email TEXT NOT NULL,
+                requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expires_at DATETIME NOT NULL,
+                consumed_at DATETIME
+            );
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_email_change_user_pending
+                ON email_change_requests(user_id, consumed_at);
+            SQL,
         ];
 
         $db = self::$connection;
