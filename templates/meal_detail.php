@@ -12,6 +12,14 @@ $mealDetailRedirect = Url::u('/plan/day/meal?day=' . (int) $day . '&meal_type=' 
 $weekStart = $weekStart ?? new DateTimeImmutable('monday this week');
 ?>
 <section class="meal-detail" data-week-id="<?= (int) $weekId ?>" data-current-day="<?= (int) $day ?>">
+    <div class="meal-detail__header-row">
+        <a href="<?= htmlspecialchars($backUrl) ?>" class="meal-detail__back btn btn-secondary btn-sm">← Zpět na denní přehled</a>
+        <h1 class="meal-detail__heading plan-heading">
+            <?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?>
+            <span class="meal-detail__date plan-heading__date"><?= $dayDate->format('j. n. Y') ?></span>
+        </h1>
+    </div>
+
     <nav class="plan-nav" aria-label="Navigace dní">
         <div class="plan-nav__days">
             <?php for ($d = 1; $d <= 7; $d++): ?>
@@ -32,14 +40,6 @@ $weekStart = $weekStart ?? new DateTimeImmutable('monday this week');
         </div>
         <a href="<?= Url::hu('/plan/day?day=' . $day) ?>" class="plan-nav__week-link">Denní přehled</a>
     </nav>
-
-    <div class="meal-detail__header-row">
-        <a href="<?= htmlspecialchars($backUrl) ?>" class="meal-detail__back btn btn-secondary btn-sm">← Zpět na denní přehled</a>
-        <h1 class="meal-detail__heading plan-heading">
-            <?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?>
-            <span class="meal-detail__date plan-heading__date"><?= $dayDate->format('j. n. Y') ?></span>
-        </h1>
-    </div>
 
     <div class="meal-detail__content">
         <?php if ($chosenAlt !== null): ?>

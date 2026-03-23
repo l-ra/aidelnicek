@@ -589,6 +589,8 @@ body {
 /* ── Meal detail (dedicated view for single meal slot) ──────────────────────── */
 .meal-detail {
     width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
 }
 
 .meal-detail__header-row {
@@ -622,6 +624,7 @@ body {
 .meal-detail__content {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 1.5rem;
 }
 
