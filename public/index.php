@@ -17,18 +17,50 @@ use Aidelnicek\GenerationJobService;
 use Aidelnicek\Router;
 use Aidelnicek\ShoppingList;
 use Aidelnicek\ShoppingListExport;
+use Aidelnicek\Tenant;
+use Aidelnicek\TenantContext;
+use Aidelnicek\Url;
 use Aidelnicek\User;
 
-Database::init($projectRoot);
+$requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+$segments    = array_values(array_filter(explode('/', trim($requestPath, '/')), static fn ($s) => $s !== ''));
+$firstSeg    = $segments[0] ?? '';
+$tenantSlug  = null;
+$urlBasePath = '';
+
+Tenant::migrateLegacyFlatFilesToDplusk($projectRoot);
+
+if ($firstSeg !== '' && Tenant::isValidSlug($firstSeg) && Tenant::tenantExists($projectRoot, $firstSeg)) {
+    $tenantSlug = $firstSeg;
+    TenantContext::initFromSlug($tenantSlug);
+    $urlBasePath = '/' . $tenantSlug;
+    Auth::configureTenantSession();
+    Database::init($projectRoot, $tenantSlug);
+} elseif ($firstSeg === '') {
+    TenantContext::reset();
+    Database::init($projectRoot, null);
+} else {
+    http_response_code(404);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>404</title></head><body>'
+        . '<h1>404</h1><p>Domácnost neexistuje nebo neplatná adresa.</p></body></html>';
+    exit;
+}
+
+if ($tenantSlug === null) {
+    require $projectRoot . '/templates/landing.php';
+    exit;
+}
+
 Auth::init();
 
-$router = new Router($projectRoot);
+$router = new Router($projectRoot, $urlBasePath);
 
 $requireCsrf = function (string $redirectOnFail, callable $handler): callable {
     return function () use ($redirectOnFail, $handler) {
         $token = $_POST['csrf_token'] ?? '';
         if (!Csrf::validate($token)) {
-            header('Location: ' . $redirectOnFail);
+            header('Location: ' . Url::tenantLocation($redirectOnFail));
             exit;
         }
         $handler();
@@ -38,7 +70,7 @@ $requireCsrf = function (string $redirectOnFail, callable $handler): callable {
 $router->get('/', function () use ($projectRoot) {
     $user = Auth::getCurrentUser();
     if ($user === null) {
-        header('Location: /login');
+        header('Location: ' . Url::u('/login'));
         exit;
     }
     require $projectRoot . '/templates/dashboard.php';
@@ -46,7 +78,7 @@ $router->get('/', function () use ($projectRoot) {
 
 $router->get('/login', function () use ($projectRoot) {
     if (Auth::isLoggedIn()) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
     require $projectRoot . '/templates/login.php';
@@ -57,27 +89,27 @@ $router->post('/login', $requireCsrf('/login?error=csrf', function () {
     $password = $_POST['password'] ?? '';
     $rememberMe = !empty($_POST['remember_me'] ?? '');
     if ($email === '' || $password === '') {
-        header('Location: /login?error=missing');
+        header('Location: ' . Url::u('/login?error=missing'));
         exit;
     }
     $user = User::verifyPassword($email, $password);
     if ($user === null) {
-        header('Location: /login?error=invalid');
+        header('Location: ' . Url::u('/login?error=invalid'));
         exit;
     }
     Auth::login((int) $user['id'], $rememberMe);
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }));
 
 $router->get('/register', function () use ($projectRoot) {
     if (Auth::isLoggedIn()) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
     $invite = Invite::validateToken($_GET['invite'] ?? '');
     if ($invite === null) {
-        header('Location: /login?error=invite_required');
+        header('Location: ' . Url::u('/login?error=invite_required'));
         exit;
     }
     require $projectRoot . '/templates/register.php';
@@ -85,14 +117,14 @@ $router->get('/register', function () use ($projectRoot) {
 
 $router->post('/register', $requireCsrf('/register?error=csrf', function () use ($projectRoot) {
     if (Auth::isLoggedIn()) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
 
     $inviteToken = $_POST['invite_token'] ?? '';
     $invite      = Invite::validateToken($inviteToken);
     if ($invite === null) {
-        header('Location: /login?error=invite_required');
+        header('Location: ' . Url::u('/login?error=invite_required'));
         exit;
     }
 
@@ -116,7 +148,7 @@ $router->post('/register', $requireCsrf('/register?error=csrf', function () use 
     User::create($data);
     $user = User::findByEmail($data['email']);
     Auth::login((int) $user['id']);
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }));
 
@@ -142,7 +174,7 @@ $router->post('/profile', $requireCsrf('/profile?error=csrf', function () use ($
     $errors = User::validateProfile($data);
     if (empty($errors)) {
         User::update((int) $user['id'], $data);
-        header('Location: /profile?success=1');
+        header('Location: ' . Url::u('/profile?success=1'));
         exit;
     }
     $user = array_merge($user, $data);
@@ -162,7 +194,7 @@ $router->post('/profile-password', $requireCsrf('/profile?error=csrf', function 
     $errors = User::validatePasswordChange((int) $user['id'], $data);
     if (empty($errors)) {
         User::updatePassword((int) $user['id'], $data['new_password']);
-        header('Location: /profile?password_saved=1');
+        header('Location: ' . Url::u('/profile?password_saved=1'));
         exit;
     }
     $user = User::findById((int) $user['id']);
@@ -174,7 +206,7 @@ $router->post('/profile-password', $requireCsrf('/profile?error=csrf', function 
 
 $router->post('/logout', $requireCsrf('/?error=csrf', function () {
     Auth::logout();
-    header('Location: /login');
+    header('Location: ' . Url::u('/login'));
     exit;
 }));
 
@@ -183,7 +215,7 @@ $router->post('/logout', $requireCsrf('/?error=csrf', function () {
 $router->get('/admin', function () use ($projectRoot) {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
     require $projectRoot . '/templates/admin.php';
@@ -192,19 +224,19 @@ $router->get('/admin', function () use ($projectRoot) {
 $router->post('/admin/user-password-reset', $requireCsrf('/admin?password_error=csrf', function () {
     $adminUser = Auth::requireLogin();
     if (!User::isAdmin((int) $adminUser['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
 
     $targetUserId = isset($_POST['user_id']) ? (int) $_POST['user_id'] : 0;
     if ($targetUserId <= 0) {
-        header('Location: /admin?password_error=missing_user');
+        header('Location: ' . Url::u('/admin?password_error=missing_user'));
         exit;
     }
 
     $targetUser = User::findById($targetUserId);
     if ($targetUser === null) {
-        header('Location: /admin?password_error=invalid_user');
+        header('Location: ' . Url::u('/admin?password_error=invalid_user'));
         exit;
     }
 
@@ -215,12 +247,12 @@ $router->post('/admin/user-password-reset', $requireCsrf('/admin?password_error=
     $passwordErrors = User::validateAdminPasswordReset($passwordData);
     if (!empty($passwordErrors)) {
         $errorCode = array_key_first($passwordErrors);
-        header('Location: /admin?password_error=' . urlencode((string) $errorCode) . '&user_id=' . $targetUserId);
+        header('Location: ' . Url::u('/admin?password_error=' . urlencode((string) $errorCode) . '&user_id=' . $targetUserId));
         exit;
     }
 
     User::updatePassword($targetUserId, $passwordData['new_password']);
-    header('Location: /admin?success=password_reset&user_id=' . $targetUserId);
+    header('Location: ' . Url::u('/admin?success=password_reset&user_id=' . $targetUserId));
     exit;
 }));
 
@@ -231,7 +263,7 @@ $router->get('/admin/table', function () use ($projectRoot) {
 $router->post('/admin/table/delete', $requireCsrf('/admin/table', function () {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
 
@@ -245,21 +277,21 @@ $router->post('/admin/table/delete', $requireCsrf('/admin/table', function () {
     $page  = isset($_POST['page'])  ? (int) $_POST['page']  : 1;
 
     if ($table === '' || !in_array($table, $tableList, true) || $rowid <= 0) {
-        header('Location: /admin/table?table=' . urlencode($table) . '&error=invalid');
+        header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&error=invalid'));
         exit;
     }
 
     $qt = '"' . str_replace('"', '""', $table) . '"';
     $db->prepare("DELETE FROM {$qt} WHERE rowid = ?")->execute([$rowid]);
 
-    header('Location: /admin/table?table=' . urlencode($table) . '&page=' . $page . '&success=deleted');
+    header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&page=' . $page . '&success=deleted'));
     exit;
 }));
 
 $router->post('/admin/table/clear', $requireCsrf('/admin/table', function () {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
 
@@ -270,21 +302,21 @@ $router->post('/admin/table/clear', $requireCsrf('/admin/table', function () {
 
     $table = $_POST['table'] ?? '';
     if ($table === '' || !in_array($table, $tableList, true)) {
-        header('Location: /admin/table?table=' . urlencode($table) . '&error=invalid');
+        header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&error=invalid'));
         exit;
     }
 
     $qt = '"' . str_replace('"', '""', $table) . '"';
     $db->exec("DELETE FROM {$qt}");
 
-    header('Location: /admin/table?table=' . urlencode($table) . '&success=cleared');
+    header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&success=cleared'));
     exit;
 }));
 
 $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
 
@@ -298,7 +330,7 @@ $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
     $page  = isset($_POST['page'])  ? (int) $_POST['page']  : 1;
 
     if ($table === '' || !in_array($table, $tableList, true) || $rowid <= 0) {
-        header('Location: /admin/table?table=' . urlencode($table) . '&error=invalid');
+        header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&error=invalid'));
         exit;
     }
 
@@ -331,7 +363,7 @@ $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
         $db->prepare($sql)->execute($values);
     }
 
-    header('Location: /admin/table?table=' . urlencode($table) . '&page=' . $page . '&success=updated');
+    header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&page=' . $page . '&success=updated'));
     exit;
 }));
 
@@ -342,7 +374,7 @@ $router->get('/admin/sql', function () use ($projectRoot) {
 $router->post('/admin/seed-demo', $requireCsrf('/admin?error=csrf', function () {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
 
@@ -362,7 +394,7 @@ $router->post('/admin/seed-demo', $requireCsrf('/admin?error=csrf', function () 
         MealPlan::seedDemoWeek((int) $u['id'], $weekId);
     }
 
-    header('Location: /admin?success=seeded');
+    header('Location: ' . Url::u('/admin?success=seeded'));
     exit;
 }));
 
@@ -412,7 +444,7 @@ $router->post('/admin/sql', function () {
 $router->get('/admin/llm-test', function () use ($projectRoot) {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
     require $projectRoot . '/templates/admin_llm_test.php';
@@ -493,7 +525,7 @@ $router->post('/admin/llm-test', function () use ($projectRoot) {
 $router->get('/admin/llm-logs', function () use ($projectRoot) {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
     require $projectRoot . '/templates/admin_llm_logs.php';
@@ -523,7 +555,7 @@ $router->post('/admin/llm-logs/data', function () use ($projectRoot) {
         exit;
     }
 
-    $path = $projectRoot . '/data/' . $filename;
+    $path = Database::getTenantDataDir() . '/' . $filename;
     if (!file_exists($path)) {
         header('Content-Type: application/json');
         echo json_encode(['ok' => false, 'error' => 'Soubor neexistuje.']);
@@ -551,7 +583,7 @@ $router->post('/admin/llm-logs/data', function () use ($projectRoot) {
 $router->get('/admin/llm-generate', function () use ($projectRoot) {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
     require $projectRoot . '/templates/admin_generate.php';
@@ -782,7 +814,7 @@ $router->get('/llm/jobs-running-count', function () {
 
 $router->get('/plan', function () {
     Auth::requireLogin();
-    header('Location: /plan/day');
+    header('Location: ' . Url::u('/plan/day'));
     exit;
 });
 
@@ -820,7 +852,7 @@ $router->get('/plan/day/meal', function () use ($projectRoot) {
 
     $validMealTypes = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
     if (!in_array($mealType, $validMealTypes, true)) {
-        header('Location: /plan/day?day=' . $day);
+        header('Location: ' . Url::u('/plan/day?day=' . $day));
         exit;
     }
 
@@ -874,7 +906,7 @@ $router->post('/plan/swap', $requireCsrf('/plan/day', function () use ($projectR
             echo json_encode(['ok' => false, 'error' => 'invalid params']);
             exit;
         }
-        header('Location: ' . $redirectTo);
+        header('Location: ' . Url::tenantLocation($redirectTo));
         exit;
     }
 
@@ -889,7 +921,7 @@ $router->post('/plan/swap', $requireCsrf('/plan/day', function () use ($projectR
         exit;
     }
 
-    header('Location: ' . $redirectTo);
+    header('Location: ' . Url::tenantLocation($redirectTo));
     exit;
 }));
 
@@ -944,7 +976,7 @@ $router->post('/plan/choose', $requireCsrf('/plan/day', function () use ($projec
             echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
             exit;
         }
-        header('Location: ' . $redirectTo);
+        header('Location: ' . Url::tenantLocation($redirectTo));
         exit;
     }
 
@@ -967,7 +999,7 @@ $router->post('/plan/choose', $requireCsrf('/plan/day', function () use ($projec
         exit;
     }
 
-    header('Location: ' . $redirectTo);
+    header('Location: ' . Url::tenantLocation($redirectTo));
     exit;
 }));
 
@@ -984,7 +1016,7 @@ $router->post('/plan/choose-household', $requireCsrf('/plan/day', function () us
             echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
             exit;
         }
-        header('Location: ' . $redirectTo);
+        header('Location: ' . Url::tenantLocation($redirectTo));
         exit;
     }
 
@@ -996,7 +1028,7 @@ $router->post('/plan/choose-household', $requireCsrf('/plan/day', function () us
         exit;
     }
 
-    header('Location: ' . $redirectTo);
+    header('Location: ' . Url::tenantLocation($redirectTo));
     exit;
 }));
 
@@ -1014,7 +1046,7 @@ $router->post('/plan/eaten', $requireCsrf('/plan/day', function () use ($project
             echo json_encode(['ok' => false, 'error' => 'invalid plan_id']);
             exit;
         }
-        header('Location: ' . $redirectTo);
+        header('Location: ' . Url::tenantLocation($redirectTo));
         exit;
     }
 
@@ -1038,7 +1070,7 @@ $router->post('/plan/eaten', $requireCsrf('/plan/day', function () use ($project
         exit;
     }
 
-    header('Location: ' . $redirectTo);
+    header('Location: ' . Url::tenantLocation($redirectTo));
     exit;
 }));
 
@@ -1111,14 +1143,15 @@ $router->get('/plan/recipe/view', function () use ($projectRoot) {
 
     $planId = isset($_GET['plan_id']) ? (int) $_GET['plan_id'] : 0;
     if ($planId <= 0) {
-        header('Location: /plan/day');
+        header('Location: ' . Url::u('/plan/day'));
         exit;
     }
 
     $recipe = MealRecipe::getRecipeForView($userId, $planId);
     if ($recipe === null) {
         $pageTitle = 'Recept nenalezen';
-        $content  = '<section class="error-page"><h1>Recept nenalezen</h1><p>Recept pro toto jídlo nebyl nalezen nebo ještě nebyl vygenerován.</p><a href="/plan/day" class="btn">Zpět na jídelníček</a></section>';
+        $content  = '<section class="error-page"><h1>Recept nenalezen</h1><p>Recept pro toto jídlo nebyl nalezen nebo ještě nebyl vygenerován.</p><a href="'
+            . htmlspecialchars(Url::u('/plan/day')) . '" class="btn">Zpět na jídelníček</a></section>';
         require $projectRoot . '/templates/layout.php';
         exit;
     }
@@ -1136,7 +1169,7 @@ $router->get('/plan/recipe/view', function () use ($projectRoot) {
 $router->post('/plan/regenerate', $requireCsrf('/plan/week', function () {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /plan/week');
+        header('Location: ' . Url::u('/plan/week'));
         exit;
     }
 
@@ -1152,7 +1185,7 @@ $router->post('/plan/regenerate', $requireCsrf('/plan/week', function () {
     // Spustí generování přes LLM worker (fire-and-forget — uživatel nemusí čekat)
     MealGenerator::startGenerationJob($userId, (int) $week['id'], true);
 
-    header('Location: /plan/week?week=' . (int) $week['week_number'] . '&year=' . (int) $week['year'] . '&generating=1');
+    header('Location: ' . Url::u('/plan/week?week=' . (int) $week['week_number'] . '&year=' . (int) $week['year'] . '&generating=1'));
     exit;
 }));
 
@@ -1228,7 +1261,7 @@ $router->post('/shopping/toggle', $requireCsrf('/shopping', function () {
             echo json_encode(['ok' => false, 'error' => 'invalid item_id']);
             exit;
         }
-        header('Location: ' . $redirectTo);
+        header('Location: ' . Url::tenantLocation($redirectTo));
         exit;
     }
 
@@ -1247,7 +1280,7 @@ $router->post('/shopping/toggle', $requireCsrf('/shopping', function () {
         exit;
     }
 
-    header('Location: ' . $redirectTo);
+    header('Location: ' . Url::tenantLocation($redirectTo));
     exit;
 }));
 
@@ -1272,7 +1305,7 @@ $router->post('/shopping/add', $requireCsrf('/shopping', function () {
             echo json_encode(['ok' => false, 'error' => 'Název je povinný']);
             exit;
         }
-        header('Location: /shopping?error=name');
+        header('Location: ' . Url::u('/shopping?error=name'));
         exit;
     }
 
@@ -1284,7 +1317,7 @@ $router->post('/shopping/add', $requireCsrf('/shopping', function () {
         exit;
     }
 
-    header('Location: /shopping');
+    header('Location: ' . Url::u('/shopping'));
     exit;
 }));
 
@@ -1302,7 +1335,7 @@ $router->post('/shopping/remove', $requireCsrf('/shopping', function () {
             echo json_encode(['ok' => false, 'error' => 'invalid item_id']);
             exit;
         }
-        header('Location: ' . $redirectTo);
+        header('Location: ' . Url::tenantLocation($redirectTo));
         exit;
     }
 
@@ -1314,7 +1347,7 @@ $router->post('/shopping/remove', $requireCsrf('/shopping', function () {
         exit;
     }
 
-    header('Location: ' . $redirectTo);
+    header('Location: ' . Url::tenantLocation($redirectTo));
     exit;
 }));
 
@@ -1326,7 +1359,7 @@ $router->post('/shopping/clear', $requireCsrf('/shopping', function () {
 
     ShoppingList::clearPurchased($weekId);
 
-    header('Location: /shopping');
+    header('Location: ' . Url::u('/shopping'));
     exit;
 }));
 
@@ -1339,7 +1372,7 @@ $router->post('/shopping/regenerate', $requireCsrf('/shopping', function () {
 
     ShoppingList::generateFromMealPlans($weekId, true);
 
-    header('Location: /shopping');
+    header('Location: ' . Url::u('/shopping'));
     exit;
 }));
 
@@ -1348,7 +1381,7 @@ $router->post('/shopping/regenerate', $requireCsrf('/shopping', function () {
 $router->get('/admin/invite', function () use ($projectRoot) {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
     require $projectRoot . '/templates/admin_invite.php';
@@ -1357,7 +1390,7 @@ $router->get('/admin/invite', function () use ($projectRoot) {
 $router->post('/admin/invite', $requireCsrf('/admin/invite?error=csrf', function () use ($projectRoot) {
     $user = Auth::requireLogin();
     if (!User::isAdmin((int) $user['id'])) {
-        header('Location: /');
+        header('Location: ' . Url::u('/'));
         exit;
     }
 

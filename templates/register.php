@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aidelnicek\User;
 use Aidelnicek\Invite;
+use Aidelnicek\Url;
 
 $genderOptions   = User::getGenderOptions();
 $bodyTypeOptions = User::getBodyTypeOptions();
@@ -37,7 +38,7 @@ ob_start();
         </p>
     <?php endif; ?>
 
-    <form method="post" action="/register">
+    <form method="post" action="<?= Url::hu('/register') ?>">
         <?= \Aidelnicek\Csrf::field() ?>
         <input type="hidden" name="invite_token" value="<?= htmlspecialchars($inviteToken) ?>">
 

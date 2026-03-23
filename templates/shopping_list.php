@@ -4,6 +4,7 @@ use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\MealPlan;
 use Aidelnicek\ShoppingList;
+use Aidelnicek\Url;
 
 $pageTitle = 'Nákupní seznam';
 $user      = Auth::getCurrentUser();
@@ -44,8 +45,8 @@ ob_start();
         <div class="shopping-header__actions">
             <?php if ($totalCount > 0): ?>
                 <div class="shopping-export-buttons">
-                    <a href="/shopping/export?format=csv" class="btn btn-secondary btn-sm">Stáhnout CSV</a>
-                    <a href="/shopping/export?format=json" class="btn btn-secondary btn-sm">Stáhnout JSON</a>
+                    <a href="<?= Url::hu('/shopping/export?format=csv') ?>" class="btn btn-secondary btn-sm">Stáhnout CSV</a>
+                    <a href="<?= Url::hu('/shopping/export?format=json') ?>" class="btn btn-secondary btn-sm">Stáhnout JSON</a>
                     <button type="button" class="btn btn-secondary btn-sm js-copy-signed-link"
                             data-url-csv="<?= htmlspecialchars($exportSignedUrlCsv ?? '') ?>"
                             data-url-json="<?= htmlspecialchars($exportSignedUrlJson ?? '') ?>"
@@ -54,12 +55,12 @@ ob_start();
                     </button>
                 </div>
             <?php endif; ?>
-            <form method="post" action="/shopping/regenerate">
+            <form method="post" action="<?= Url::hu('/shopping/regenerate') ?>">
                 <?= Csrf::field() ?>
                 <button type="submit" class="btn btn-secondary btn-sm">Generovat znovu</button>
             </form>
             <?php if ($boughtCount > 0): ?>
-                <form method="post" action="/shopping/clear">
+                <form method="post" action="<?= Url::hu('/shopping/clear') ?>">
                     <?= Csrf::field() ?>
                     <button type="submit" class="btn btn-secondary btn-sm">Smazat ✓</button>
                 </form>
@@ -97,7 +98,7 @@ ob_start();
     <?php if (empty($allItems)): ?>
         <div class="shopping-empty">
             <p>Jídelníček pro tento týden nebyl zatím vygenerován. Nejdříve si prohlédni svůj
-               <a href="/plan">jídelníček</a> a pak klikni na <strong>Generovat znovu</strong>.</p>
+               <a href="<?= Url::hu('/plan') ?>">jídelníček</a> a pak klikni na <strong>Generovat znovu</strong>.</p>
         </div>
     <?php else: ?>
         <div id="shopping-items-container" data-week-id="<?= $weekId ?>">
@@ -151,7 +152,7 @@ ob_start();
 
     <div class="shopping-add-form">
         <h2>Přidat položku</h2>
-        <form method="post" action="/shopping/add" class="shopping-add-form__inner">
+        <form method="post" action="<?= Url::hu('/shopping/add') ?>" class="shopping-add-form__inner">
             <?= Csrf::field() ?>
             <input type="text" name="name" placeholder="Název" required
                    class="shopping-add-input" autocomplete="off">

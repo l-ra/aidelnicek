@@ -2,6 +2,18 @@
  * Aidelnicek — M1/M2/M3 JS
  */
 
+/**
+ * Prefixuje cestu tenantem z window.AIDELNICEK_BASE_PATH (nastaví layout.php).
+ */
+function appPath(path) {
+    var p = path || '/';
+    if (p.charAt(0) !== '/') {
+        p = '/' + p;
+    }
+    var base = typeof window.AIDELNICEK_BASE_PATH === 'string' ? window.AIDELNICEK_BASE_PATH : '';
+    return base + p;
+}
+
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     var s = String(str);
@@ -111,7 +123,7 @@ function initRunningJobsIndicator() {
     if (!indicator) { return; }
 
     var countEl = indicator.querySelector('.nav-llm-jobs__count');
-    var pollUrl = indicator.getAttribute('data-poll-url') || '/llm/jobs-running-count';
+    var pollUrl = indicator.getAttribute('data-poll-url') || appPath('/llm/jobs-running-count');
     var timerId = null;
 
     function renderCount(rawCount) {
@@ -226,7 +238,7 @@ function initAlternativePicker() {
             if (!card && !mealDetail) return;
 
             var forHousehold = this.classList.contains('alt-choose-btn--household');
-            var url = forHousehold ? '/plan/choose-household' : '/plan/choose';
+            var url = forHousehold ? appPath('/plan/choose-household') : appPath('/plan/choose');
 
             postAjax(url, { plan_id: planId, redirect_to: redirect })
                 .then(function (json) {
@@ -319,7 +331,7 @@ function attachEatenHandler(cb) {
         var optEl    = this.closest('.alt-option');
         var cbEl     = this;
 
-        postAjax('/plan/eaten', { plan_id: planId, redirect_to: redirect })
+        postAjax(appPath('/plan/eaten'), { plan_id: planId, redirect_to: redirect })
             .then(function (json) {
                 if (!json.ok) { cbEl.checked = !cbEl.checked; showNetworkError(); return; }
 
@@ -429,7 +441,7 @@ function initSwapDropdown() {
                     var scopeEl = document.getElementById('swap-meal-modal-scope-user-only');
                     var swapScope = (scopeEl && scopeEl.checked) ? 'user_only' : 'household';
 
-                    postAjax('/plan/swap', {
+                    postAjax(appPath('/plan/swap'), {
                         week_id: weekId,
                         day_a: dayA,
                         day_b: dayB,
@@ -593,7 +605,7 @@ function initMealRecipeButtons() {
             this.setAttribute('aria-expanded', 'false');
             panel.setAttribute('hidden', 'hidden');
 
-            postAjax('/plan/recipe', { plan_id: planId })
+            postAjax(appPath('/plan/recipe'), { plan_id: planId })
                 .then(function (json) {
                     if (!json.ok) {
                         showNetworkError();
@@ -625,7 +637,7 @@ function initMealRecipeButtons() {
 }
 
 function pollRecipeStatus(planId, jobId, btn, panel, recipeTextEl, metaEl, attempt) {
-    var pollUrl = '/plan/recipe-status?plan_id=' + encodeURIComponent(planId);
+    var pollUrl = appPath('/plan/recipe-status?plan_id=' + encodeURIComponent(planId));
     if (jobId) {
         pollUrl += '&job_id=' + encodeURIComponent(jobId);
     }
@@ -745,7 +757,7 @@ function initShoppingToggle() {
         var li     = btn.closest('.shopping-item');
         if (!itemId || !li) { return; }
 
-        postAjax('/shopping/toggle', { item_id: itemId, redirect_to: '/shopping' })
+        postAjax(appPath('/shopping/toggle'), { item_id: itemId, redirect_to: appPath('/shopping') })
             .then(function (json) {
                 if (!json.ok) { showNetworkError(); return; }
 
@@ -777,7 +789,7 @@ function initShoppingRemove() {
         var li     = btn.closest('.shopping-item');
         if (!itemId || !li) { return; }
 
-        postAjax('/shopping/remove', { item_id: itemId, redirect_to: '/shopping' })
+        postAjax(appPath('/shopping/remove'), { item_id: itemId, redirect_to: appPath('/shopping') })
             .then(function (json) {
                 if (!json.ok) { showNetworkError(); return; }
 

@@ -3,7 +3,9 @@
 
 # SQLite database files
 /data/*.sqlite
+/data/**/*.sqlite
 /data/*.db
+/data/**/*.db
 
 # LLM invite secret — contains cryptographic key, must not be committed
 /data/invite_secret.key
@@ -17,6 +19,9 @@
 
 # Build-generated version info (created during Docker build)
 /version.json
+
+# Python
+__pycache__/
 
 # IDE / OS
 .DS_Store

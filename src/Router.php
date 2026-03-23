@@ -37,8 +37,12 @@ class Router
         $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
         $path = $this->normalizePath($requestUri);
 
-        if ($this->urlBasePath !== '' && str_starts_with($path, $this->urlBasePath . '/')) {
-            $path = substr($path, strlen($this->urlBasePath)) ?: '/';
+        if ($this->urlBasePath !== '') {
+            if ($path === $this->urlBasePath) {
+                $path = '/';
+            } elseif (str_starts_with($path, $this->urlBasePath . '/')) {
+                $path = substr($path, strlen($this->urlBasePath)) ?: '/';
+            }
         }
 
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';

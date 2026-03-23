@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Aidelnicek\Auth;
 use Aidelnicek\User;
+use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
 $genderOptions = User::getGenderOptions();
@@ -30,7 +31,7 @@ ob_start();
     <?php if ($passwordSuccess): ?>
         <p class="alert alert-success">Heslo bylo úspěšně změněno.</p>
     <?php endif; ?>
-    <form method="post" action="/profile">
+    <form method="post" action="<?= Url::hu('/profile') ?>">
         <?= \Aidelnicek\Csrf::field() ?>
         <div class="form-group">
             <label for="name">Jméno</label>
@@ -102,7 +103,7 @@ ob_start();
     </form>
 
     <h2>Změna hesla</h2>
-    <form method="post" action="/profile-password" class="password-change-form">
+    <form method="post" action="<?= Url::hu('/profile-password') ?>" class="password-change-form">
         <?= \Aidelnicek\Csrf::field() ?>
         <div class="form-group">
             <label for="current_password">Aktuální heslo</label>

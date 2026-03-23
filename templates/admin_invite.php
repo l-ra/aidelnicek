@@ -5,10 +5,11 @@ declare(strict_types=1);
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\User;
+use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
 if (!User::isAdmin((int) $user['id'])) {
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }
 
@@ -29,7 +30,7 @@ ob_start();
 <div class="admin-invite-page">
     <div class="admin-page-header">
         <h1>Pozvat uživatele</h1>
-        <a href="/admin" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
+        <a href="<?= Url::hu('/admin') ?>" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
     </div>
 
     <?php if ($csrfError): ?>
@@ -44,7 +45,7 @@ ob_start();
                 Umožní jednorázovou registraci pouze pro zadanou adresu.
             </p>
 
-            <form method="post" action="/admin/invite">
+            <form method="post" action="<?= Url::hu('/admin/invite') ?>">
                 <?= Csrf::field() ?>
 
                 <?php if (!empty($inviteErrors)): ?>

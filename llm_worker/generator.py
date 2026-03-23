@@ -38,13 +38,14 @@ async def stream_and_store(
     model: str,
     temperature: float,
     max_completion_tokens: int,
+    tenant_id: str,
 ) -> None:
     """
     Background async task: stream from OpenAI, write chunks + final output to DB.
     Logs the full call to the per-day LLM log SQLite file.
     """
     _ = week_id
-    conn = await open_db()
+    conn = await open_db(tenant_id)
 
     request_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     start_ts = time.monotonic()
@@ -125,6 +126,7 @@ async def stream_and_store(
             status=log_status,
             error_message=log_error,
             user_id=user_id,
+            tenant_id=tenant_id,
         )
 
 
@@ -135,6 +137,7 @@ async def complete_sync(
     temperature: float,
     max_completion_tokens: int,
     user_id: int | None = None,
+    tenant_id: str | None = None,
 ) -> dict:
     """
     Non-streaming LLM completion for the /complete endpoint.
@@ -186,6 +189,7 @@ async def complete_sync(
             status=log_status,
             error_message=log_error,
             user_id=user_id,
+            tenant_id=tenant_id,
         )
 
     return {

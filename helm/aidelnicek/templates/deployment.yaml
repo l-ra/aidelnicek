@@ -70,6 +70,8 @@ spec:
                 name: {{ include "aidelnicek.fullname" . }}-llm
                 optional: true
           env:
+            - name: DATA_ROOT
+              value: /data
             - name: DB_PATH
               value: /data/aidelnicek.sqlite
           ports:
