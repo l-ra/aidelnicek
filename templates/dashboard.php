@@ -2,6 +2,7 @@
 use Aidelnicek\Auth;
 use Aidelnicek\MealPlan;
 use Aidelnicek\ShoppingList;
+use Aidelnicek\Url;
 
 $pageTitle  = 'Dashboard';
 $user       = Auth::getCurrentUser();
@@ -32,7 +33,7 @@ ob_start();
                     <?= date('j. n. Y') ?>
                 </span>
             </h2>
-            <a href="/plan/day" class="btn btn-primary btn-sm">Otevřít</a>
+            <a href="<?= Url::hu('/plan/day') ?>" class="btn btn-primary btn-sm">Otevřít</a>
         </div>
 
         <ul class="dashboard-meal-list">
@@ -67,8 +68,8 @@ ob_start();
     </div>
 
     <div class="dashboard-actions">
-        <a href="/plan/day" class="btn btn-primary">Dnešní plán</a>
-        <a href="/plan/week" class="btn btn-secondary">Týdenní přehled</a>
+        <a href="<?= Url::hu('/plan/day') ?>" class="btn btn-primary">Dnešní plán</a>
+        <a href="<?= Url::hu('/plan/week') ?>" class="btn btn-secondary">Týdenní přehled</a>
     </div>
 
     <?php
@@ -78,7 +79,7 @@ ob_start();
     <div class="dashboard-shopping">
         <div class="dashboard-shopping__header">
             <h2>&#x1F6D2; Nákupní seznam</h2>
-            <a href="/shopping" class="btn btn-secondary btn-sm">Otevřít seznam →</a>
+            <a href="<?= Url::hu('/shopping') ?>" class="btn btn-secondary btn-sm">Otevřít seznam →</a>
         </div>
         <p class="dashboard-shopping__count">
             <?php if ($remainingCount > 0): ?>

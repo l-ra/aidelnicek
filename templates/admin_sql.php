@@ -5,10 +5,11 @@ declare(strict_types=1);
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\User;
+use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
 if (!User::isAdmin((int) $user['id'])) {
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }
 
@@ -19,7 +20,7 @@ ob_start();
 <div class="sql-console">
     <div class="admin-page-header">
         <h1>SQL konzole</h1>
-        <a href="/admin" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
+        <a href="<?= Url::hu('/admin') ?>" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
     </div>
 
     <div class="sql-layout">
@@ -182,7 +183,7 @@ ob_start();
         fd.append('csrf_token', csrfToken);
         fd.append('sql', sql);
 
-        fetch('/admin/sql', {
+        fetch(<?= json_encode(Url::u('/admin/sql'), JSON_UNESCAPED_SLASHES) ?>, {
             method:  'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             body:    fd,

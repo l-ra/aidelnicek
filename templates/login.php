@@ -1,4 +1,6 @@
 <?php
+use Aidelnicek\Url;
+
 $pageTitle = 'Přihlášení';
 $loginError = $_GET['error'] ?? null;
 $errorMessage = match ($loginError) {
@@ -15,7 +17,7 @@ ob_start();
     <?php if ($errorMessage): ?>
         <p class="alert alert-error"><?= htmlspecialchars($errorMessage) ?></p>
     <?php endif; ?>
-    <form method="post" action="/login">
+    <form method="post" action="<?= Url::hu('/login') ?>">
         <?= \Aidelnicek\Csrf::field() ?>
         <div class="form-group">
             <label for="email">E-mail</label>

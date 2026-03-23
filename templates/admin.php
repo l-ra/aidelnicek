@@ -1,4 +1,6 @@
 <?php
+use Aidelnicek\Url;
+
 $pageTitle = 'Administrace';
 $currentUser = \Aidelnicek\Auth::getCurrentUser();
 
@@ -40,19 +42,19 @@ ob_start();
         <div class="admin-card">
             <h2>Prohlížeč tabulek</h2>
             <p>Zobrazení, úprava a mazání záznamů v tabulkách databáze se stránkováním.</p>
-            <a href="/admin/table" class="btn btn-primary">Otevřít prohlížeč</a>
+            <a href="<?= Url::hu('/admin/table') ?>" class="btn btn-primary">Otevřít prohlížeč</a>
         </div>
 
         <div class="admin-card">
             <h2>SQL konzole</h2>
             <p>Spouštění libovolných SQL příkazů přímo nad databází. Historie příkazů se ukládá v prohlížeči.</p>
-            <a href="/admin/sql" class="btn btn-primary">Otevřít konzoli</a>
+            <a href="<?= Url::hu('/admin/sql') ?>" class="btn btn-primary">Otevřít konzoli</a>
         </div>
 
         <div class="admin-card" hidden>
             <h2>Generování demo dat</h2>
             <p>Vygeneruje ukázkový jídelníček pro aktuální týden. Pokud uživatel již data má, nic se nepřepíše.</p>
-            <form method="post" action="/admin/seed-demo">
+            <form method="post" action="<?= Url::hu('/admin/seed-demo') ?>">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\Aidelnicek\Csrf::generate()) ?>">
                 <div class="form-group">
                     <label for="seed-user">Uživatel</label>
@@ -74,31 +76,31 @@ ob_start();
         <div class="admin-card">
             <h2>Generování jídelníčku (AI streaming)</h2>
             <p>Spusťte generování jídelníčku přes Python LLM worker a sledujte odpověď modelu v reálném čase.</p>
-            <a href="/admin/llm-generate" class="btn btn-primary">Spustit generování</a>
+            <a href="<?= Url::hu('/admin/llm-generate') ?>" class="btn btn-primary">Spustit generování</a>
         </div>
 
         <div class="admin-card">
             <h2>Test LLM</h2>
             <p>Odešlete vlastní prompt na nakonfigurovaný jazykový model a zobrazte vygenerovanou odpověď.</p>
-            <a href="/admin/llm-test" class="btn btn-primary">Otevřít test</a>
+            <a href="<?= Url::hu('/admin/llm-test') ?>" class="btn btn-primary">Otevřít test</a>
         </div>
 
         <div class="admin-card">
             <h2>LLM komunikační logy</h2>
             <p>Prohlížejte záznamy komunikace s LLM uložené v denních log souborech.</p>
-            <a href="/admin/llm-logs" class="btn btn-primary">Zobrazit logy</a>
+            <a href="<?= Url::hu('/admin/llm-logs') ?>" class="btn btn-primary">Zobrazit logy</a>
         </div>
 
         <div class="admin-card">
             <h2>Pozvat uživatele</h2>
             <p>Vygenerujte zvací odkaz s omezenou platností pro konkrétní e-mailovou adresu. Odkaz umožní registraci pouze s daným e-mailem.</p>
-            <a href="/admin/invite" class="btn btn-primary">Generovat pozvánku</a>
+            <a href="<?= Url::hu('/admin/invite') ?>" class="btn btn-primary">Generovat pozvánku</a>
         </div>
 
         <div class="admin-card">
             <h2>Reset hesla uživatele</h2>
             <p>Nastavte nové heslo vybranému uživateli. Uživatel se pak přihlásí tímto heslem.</p>
-            <form method="post" action="/admin/user-password-reset">
+            <form method="post" action="<?= Url::hu('/admin/user-password-reset') ?>">
                 <?= \Aidelnicek\Csrf::field() ?>
                 <div class="form-group">
                     <label for="reset-user-id">Uživatel</label>

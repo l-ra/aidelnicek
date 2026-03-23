@@ -4,20 +4,22 @@ declare(strict_types=1);
 
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
+use Aidelnicek\Database;
 use Aidelnicek\User;
+use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
 if (!User::isAdmin((int) $user['id'])) {
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }
 
 $pageTitle   = 'LLM logy';
 $currentUser = Auth::getCurrentUser();
 
-// Collect available log files from data/
+// Collect available log files from tenant data/
 $logFiles = [];
-$dataDir  = dirname(__DIR__) . '/data';
+$dataDir  = Database::getTenantDataDir();
 if (is_dir($dataDir)) {
     foreach (glob($dataDir . '/llm_*.db') as $path) {
         $basename = basename($path);
@@ -33,7 +35,7 @@ ob_start();
 <div class="llm-logs-page">
     <div class="admin-page-header">
         <h1>LLM komunikační logy</h1>
-        <a href="/admin" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
+        <a href="<?= Url::hu('/admin') ?>" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
     </div>
 
     <?php if (empty($logFiles)): ?>
@@ -272,7 +274,7 @@ ob_start();
         fd.append('csrf_token', csrfToken);
         fd.append('filename',   filename);
 
-        fetch('/admin/llm-logs/data', {
+        fetch(<?= json_encode(Url::u('/admin/llm-logs/data'), JSON_UNESCAPED_SLASHES) ?>, {
             method:  'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             body:    fd,

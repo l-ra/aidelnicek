@@ -6,10 +6,11 @@ use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
 use Aidelnicek\User;
+use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
 if (!User::isAdmin((int) $user['id'])) {
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }
 
@@ -61,7 +62,7 @@ ob_start();
 <div class="admin-table-browser">
     <div class="admin-page-header">
         <h1>Prohlížeč tabulek</h1>
-        <a href="/admin" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
+        <a href="<?= Url::hu('/admin') ?>" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
     </div>
 
     <?php if ($error): ?>
@@ -77,7 +78,7 @@ ob_start();
         <p class="alert alert-success">Všechna data tabulky byla smazána.</p>
     <?php endif; ?>
 
-    <form method="get" action="/admin/table" class="table-select-form">
+    <form method="get" action="<?= Url::hu('/admin/table') ?>" class="table-select-form">
         <div class="form-row form-row--inline">
             <div class="form-group">
                 <label for="table-select">Tabulka</label>
@@ -100,7 +101,7 @@ ob_start();
             &mdash; celkem <?= $totalRows ?> řádků
             (stránka <?= $page ?> / <?= $totalPages ?>)
         </div>
-        <form method="post" action="/admin/table/clear" class="inline-form">
+        <form method="post" action="<?= Url::hu('/admin/table/clear') ?>" class="inline-form">
             <?= Csrf::field() ?>
             <input type="hidden" name="table" value="<?= htmlspecialchars($table) ?>">
             <button type="submit" class="btn btn-danger btn-sm"
@@ -143,7 +144,7 @@ ob_start();
                                         data-table="<?= htmlspecialchars($table) ?>">
                                     Upravit
                                 </button>
-                                <form method="post" action="/admin/table/delete" class="inline-form">
+                                <form method="post" action="<?= Url::hu('/admin/table/delete') ?>" class="inline-form">
                                     <?= Csrf::field() ?>
                                     <input type="hidden" name="table" value="<?= htmlspecialchars($table) ?>">
                                     <input type="hidden" name="rowid" value="<?= htmlspecialchars((string) $rowId) ?>">
@@ -181,7 +182,7 @@ ob_start();
     <div class="modal-backdrop" id="edit-modal-backdrop"></div>
     <div class="modal-content">
         <h2 id="edit-modal-title">Upravit záznam</h2>
-        <form id="edit-form" method="post" action="/admin/table/update">
+        <form id="edit-form" method="post" action="<?= Url::hu('/admin/table/update') ?>">
             <?= Csrf::field() ?>
             <input type="hidden" name="table" value="<?= htmlspecialchars($table) ?>">
             <input type="hidden" name="rowid" id="edit-rowid" value="">

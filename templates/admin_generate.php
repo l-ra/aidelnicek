@@ -6,10 +6,11 @@ use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\MealPlan;
 use Aidelnicek\User;
+use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
 if (!User::isAdmin((int) $user['id'])) {
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }
 
@@ -69,7 +70,7 @@ ob_start();
 <div class="llm-generate-page">
     <div class="admin-page-header">
         <h1>Generování jídelníčku přes AI</h1>
-        <a href="/admin" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
+        <a href="<?= Url::hu('/admin') ?>" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
     </div>
 
     <div class="llm-generate-layout">
@@ -150,7 +151,7 @@ ob_start();
                     <dt>Chunků</dt>      <dd id="info-chunks">0</dd>
                 </dl>
                 <div id="gen-done-actions" hidden style="margin-top:1rem">
-                    <a id="gen-plan-link" href="/plan/week" class="btn btn-primary">
+                    <a id="gen-plan-link" href="<?= Url::hu('/plan/week') ?>" class="btn btn-primary">
                         Zobrazit vygenerovaný jídelníček →
                     </a>
                 </div>
@@ -324,7 +325,7 @@ ob_start();
         fd.append('week_number', week);
         fd.append('year',        year);
 
-        fetch('/admin/llm-generate', {
+        fetch(<?= json_encode(Url::u('/admin/llm-generate'), JSON_UNESCAPED_SLASHES) ?>, {
             method:  'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             body:    fd,
@@ -352,7 +353,7 @@ ob_start();
             startElapsedTimer();
 
             // Step 2: open SSE stream
-            var es = new EventSource('/admin/llm-stream?job_id=' + jobId);
+            var es = new EventSource(<?= json_encode(Url::u('/admin/llm-stream'), JSON_UNESCAPED_SLASHES) ?> + '?job_id=' + jobId);
             activeEs = es;
 
             es.onmessage = function (evt) {
@@ -375,7 +376,7 @@ ob_start();
                         infoStatus.textContent = '✓ hotovo';
                         setStatus('Generování dokončeno.', 'ok');
                         // Build plan link for the right week/year
-                        planLink.href = '/plan/week?week=' + week + '&year=' + year;
+                        planLink.href = <?= json_encode(Url::u('/plan/week'), JSON_UNESCAPED_SLASHES) ?> + '?week=' + week + '&year=' + year;
                         doneActions.hidden = false;
                     } else {
                         infoStatus.textContent = '✗ chyba';

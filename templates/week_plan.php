@@ -1,6 +1,7 @@
 <?php
 use Aidelnicek\Csrf;
 use Aidelnicek\MealPlan;
+use Aidelnicek\Url;
 
 $pageTitle = 'Týdenní jídelníček';
 
@@ -26,7 +27,7 @@ ob_start();
 <section class="week-plan">
 
     <div class="week-plan__header">
-        <a href="/plan/week?week=<?= $prevWeek ?>&year=<?= $prevYear ?>" class="btn btn-secondary btn-sm">
+        <a href="<?= Url::hu('/plan/week?week=' . $prevWeek . '&year=' . $prevYear) ?>" class="btn btn-secondary btn-sm">
             &larr; Předchozí
         </a>
         <h1 class="plan-heading">
@@ -35,7 +36,7 @@ ob_start();
                 <span class="badge-current">aktuální</span>
             <?php endif; ?>
         </h1>
-        <a href="/plan/week?week=<?= $nextWeek ?>&year=<?= $nextYear ?>" class="btn btn-secondary btn-sm">
+        <a href="<?= Url::hu('/plan/week?week=' . $nextWeek . '&year=' . $nextYear) ?>" class="btn btn-secondary btn-sm">
             Další &rarr;
         </a>
     </div>
@@ -51,7 +52,7 @@ ob_start();
                         $isToday = $isCurrentWeek && $d === $todayIso;
                         ?>
                         <th class="<?= $isToday ? 'today' : '' ?>">
-                            <a href="/plan/day?day=<?= $d ?>" class="week-table__day-link">
+                            <a href="<?= Url::hu('/plan/day?day=' . $d) ?>" class="week-table__day-link">
                                 <span class="week-table__day-short"><?= MealPlan::getDayShortLabel($d) ?></span>
                                 <span class="week-table__day-date"><?= $dDate->format('j.n.') ?></span>
                             </a>
@@ -87,7 +88,7 @@ ob_start();
                             ?>
                             <td class="<?= $tdClass ?>">
                                 <?php if ($chosen): ?>
-                                    <a href="/plan/day?day=<?= $d ?>" class="week-table__cell-link <?= $isEaten ? 'is-eaten' : '' ?>">
+                                    <a href="<?= Url::hu('/plan/day?day=' . $d) ?>" class="week-table__cell-link <?= $isEaten ? 'is-eaten' : '' ?>">
                                         <?= htmlspecialchars($chosen['meal_name']) ?>
                                         <?php if ($isEaten): ?>
                                             <span class="eaten-mark" title="Snězeno">&#10003;</span>
@@ -105,7 +106,7 @@ ob_start();
     </div>
 
     <div class="week-plan__footer">
-        <a href="/plan/day" class="btn btn-primary">Dnešní plán</a>
+        <a href="<?= Url::hu('/plan/day') ?>" class="btn btn-primary">Dnešní plán</a>
     </div>
 
 </section>

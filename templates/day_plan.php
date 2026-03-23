@@ -1,11 +1,12 @@
 <?php
 use Aidelnicek\MealPlan;
 use Aidelnicek\Csrf;
+use Aidelnicek\Url;
 
 $pageTitle = 'Denní jídelníček';
 $csrfToken = Csrf::generate();
 
-$currentRedirect = '/plan/day?day=' . $day;
+$currentRedirect = Url::u('/plan/day?day=' . $day);
 $householdSelections = $householdSelections ?? [];
 $weekPlan = $weekPlan ?? [];
 $weekId = $weekId ?? 0;
@@ -33,13 +34,13 @@ ob_start();
                 if ($isActive) $classes .= ' is-active';
                 if ($isToday)  $classes .= ' is-today';
                 ?>
-                <a href="/plan/day?day=<?= $d ?>" class="<?= $classes ?>">
+                <a href="<?= Url::hu('/plan/day?day=' . $d) ?>" class="<?= $classes ?>">
                     <span class="plan-nav__day-short"><?= MealPlan::getDayShortLabel($d) ?></span>
                     <span class="plan-nav__day-date"><?= $dDate->format('j.n.') ?></span>
                 </a>
             <?php endfor; ?>
         </div>
-        <a href="/plan/week" class="plan-nav__week-link">Týdenní přehled</a>
+        <a href="<?= Url::hu('/plan/week') ?>" class="plan-nav__week-link">Týdenní přehled</a>
     </nav>
 
     <div class="day-plan__header-row">
@@ -70,7 +71,7 @@ ob_start();
             }
             $chosenAlt = $chosenAltNum !== null ? ($chosenAltNum === 1 ? $alt1 : $alt2) : ($alt1 ?? $alt2);
             $otherAlt = ($chosenAltNum === 1 ? $alt2 : $alt1);
-            $mealDetailUrl = '/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlencode($mealType);
+            $mealDetailUrl = Url::u('/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlencode($mealType));
             ?>
             <div class="meal-card meal-card--compact" data-meal-type="<?= htmlspecialchars($mealType) ?>"
                  data-week-id="<?= (int) $weekId ?>"
@@ -241,12 +242,12 @@ ob_start();
 </section>
 
 <!-- Hidden CSRF forms used by JS for non-AJAX fallback -->
-<form id="form-choose" method="post" action="/plan/choose" style="display:none">
+<form id="form-choose" method="post" action="<?= Url::hu('/plan/choose') ?>" style="display:none">
     <?= Csrf::field() ?>
     <input type="hidden" name="plan_id" id="form-choose-plan-id">
     <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($currentRedirect) ?>">
 </form>
-<form id="form-eaten" method="post" action="/plan/eaten" style="display:none">
+<form id="form-eaten" method="post" action="<?= Url::hu('/plan/eaten') ?>" style="display:none">
     <?= Csrf::field() ?>
     <input type="hidden" name="plan_id" id="form-eaten-plan-id">
     <input type="hidden" name="redirect_to" value="<?= htmlspecialchars($currentRedirect) ?>">

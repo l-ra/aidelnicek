@@ -3,6 +3,7 @@ if (!isset($pageTitle)) {
     $pageTitle = 'Aidelnicek';
 }
 $currentUser = \Aidelnicek\Auth::getCurrentUser();
+$u = static fn (string $path): string => htmlspecialchars(\Aidelnicek\Url::u($path));
 ?>
 <!DOCTYPE html>
 <html lang="cs">
@@ -13,27 +14,35 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
     <link rel="stylesheet" href="/css/style.css">
     <meta name="csrf-token" content="<?= htmlspecialchars(\Aidelnicek\Csrf::generate()) ?>">
 </head>
-<body>
+<body data-base-path="<?php
+$__ts = \Aidelnicek\TenantContext::slug();
+echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
+?>">
+    <?php if ($currentUser && ($__ts = \Aidelnicek\TenantContext::slug()) !== null && $__ts !== ''): ?>
+    <script>
+    try { localStorage.setItem('aidelnicek_tenant', <?= json_encode($__ts, JSON_UNESCAPED_UNICODE) ?>); } catch (e) {}
+    </script>
+    <?php endif; ?>
     <header class="site-header">
         <div class="container">
-            <a href="/" class="logo">Aidelnicek</a>
+            <a href="<?= $u('/') ?>" class="logo">Aidelnicek</a>
             <button class="nav-toggle" aria-label="Otevřít menu" aria-expanded="false" aria-controls="main-nav">
                 <span class="nav-toggle__bar"></span>
                 <span class="nav-toggle__bar"></span>
                 <span class="nav-toggle__bar"></span>
             </button>
             <nav class="main-nav" id="main-nav">
-                <a href="/">Dashboard</a>
+                <a href="<?= $u('/') ?>">Dashboard</a>
                 <?php if ($currentUser): ?>
-                    <a href="/plan">Jídelníček</a>
-                    <a href="/shopping">Nákupní seznam</a>
+                    <a href="<?= $u('/plan') ?>">Jídelníček</a>
+                    <a href="<?= $u('/shopping') ?>">Nákupní seznam</a>
                     <?php if (!empty($currentUser['is_admin'])): ?>
-                        <a href="/admin" class="nav-admin">Administrace</a>
+                        <a href="<?= $u('/admin') ?>" class="nav-admin">Administrace</a>
                     <?php endif; ?>
                     <span
                         class="nav-llm-jobs"
                         id="llm-jobs-indicator"
-                        data-poll-url="/llm/jobs-running-count"
+                        data-poll-url="<?= $u('/llm/jobs-running-count') ?>"
                         aria-live="polite"
                         aria-label="Rozpracované LLM joby: 0"
                         title="Rozpracované LLM joby: 0"
@@ -42,13 +51,13 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
                         <span class="nav-llm-jobs__count">0</span>
                     </span>
                     <span class="nav-user"><?= htmlspecialchars($currentUser['name']) ?></span>
-                    <a href="/profile">Profil</a>
-                    <form method="post" action="/logout" class="nav-logout">
+                    <a href="<?= $u('/profile') ?>">Profil</a>
+                    <form method="post" action="<?= $u('/logout') ?>" class="nav-logout">
                         <?= \Aidelnicek\Csrf::field() ?>
                         <button type="submit" class="btn-link">Odhlásit</button>
                     </form>
                 <?php else: ?>
-                    <a href="/login">Přihlásit</a>
+                    <a href="<?= $u('/login') ?>">Přihlásit</a>
                 <?php endif; ?>
             </nav>
         </div>
@@ -69,6 +78,7 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
             <?php endif; ?>
         </div>
     </footer>
+    <script>window.AIDELNICEK_BASE_PATH = <?= json_encode(\Aidelnicek\Url::basePath(), JSON_UNESCAPED_SLASHES) ?>;</script>
     <script src="/js/app.js"></script>
 </body>
 </html>

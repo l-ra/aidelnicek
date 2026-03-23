@@ -5,10 +5,11 @@ declare(strict_types=1);
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\User;
+use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
 if (!User::isAdmin((int) $user['id'])) {
-    header('Location: /');
+    header('Location: ' . Url::u('/'));
     exit;
 }
 
@@ -26,7 +27,7 @@ ob_start();
 <div class="llm-test-page">
     <div class="admin-page-header">
         <h1>Test LLM komunikace</h1>
-        <a href="/admin" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
+        <a href="<?= Url::hu('/admin') ?>" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
     </div>
 
     <div class="llm-test-layout">
@@ -124,7 +125,7 @@ ob_start();
         fd.append('temperature',   tempEl.value);
         fd.append('max_tokens',    tokensEl.value);
 
-        fetch('/admin/llm-test', {
+        fetch(<?= json_encode(Url::u('/admin/llm-test'), JSON_UNESCAPED_SLASHES) ?>, {
             method:  'POST',
             headers: { 'X-Requested-With': 'XMLHttpRequest' },
             body:    fd,

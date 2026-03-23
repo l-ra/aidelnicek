@@ -1,13 +1,14 @@
 <?php
 use Aidelnicek\MealPlan;
 use Aidelnicek\Csrf;
+use Aidelnicek\Url;
 
 $pageTitle = MealPlan::getMealTypeLabel($mealType) . ' — ' . MealPlan::getDayLabel($day);
 $householdSelections = $householdSelections ?? [];
 $currentUserName = $currentUser['name'] ?? '';
 
-$backUrl = '/plan/day?day=' . $day;
-$mealDetailRedirect = '/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlencode($mealType);
+$backUrl = Url::u('/plan/day?day=' . $day);
+$mealDetailRedirect = Url::u('/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlencode($mealType));
 ?>
 <section class="meal-detail" data-week-id="<?= (int) $weekId ?>" data-current-day="<?= (int) $day ?>">
     <a href="<?= htmlspecialchars($backUrl) ?>" class="meal-detail__back btn btn-secondary btn-sm">← Zpět na denní přehled</a>
@@ -133,7 +134,7 @@ $mealDetailRedirect = '/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlen
                     <div class="meal-recipe-panel" hidden>
                         <p class="meal-recipe-meta" hidden></p>
                         <pre class="meal-recipe-text"></pre>
-                        <a href="/plan/recipe/view?plan_id=<?= (int) $chosenAlt['id'] ?>"
+                        <a href="<?= Url::hu('/plan/recipe/view?plan_id=' . (int) $chosenAlt['id']) ?>"
                            target="_blank" rel="noopener"
                            class="meal-recipe-open-tab">Otevřít v nové záložce</a>
                     </div>
@@ -217,7 +218,7 @@ $mealDetailRedirect = '/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlen
                     <div class="meal-recipe-panel" hidden>
                         <p class="meal-recipe-meta" hidden></p>
                         <pre class="meal-recipe-text"></pre>
-                        <a href="/plan/recipe/view?plan_id=<?= (int) $otherAlt['id'] ?>"
+                        <a href="<?= Url::hu('/plan/recipe/view?plan_id=' . (int) $otherAlt['id']) ?>"
                            target="_blank" rel="noopener"
                            class="meal-recipe-open-tab">Otevřít v nové záložce</a>
                     </div>
