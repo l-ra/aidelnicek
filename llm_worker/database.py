@@ -6,15 +6,48 @@ Business projections are handled by PHP projector logic.
 """
 
 import os
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 
 import aiosqlite
 
-DB_PATH = os.environ.get("DB_PATH", "/data/aidelnicek.sqlite")
+DATA_ROOT = os.environ.get("DATA_ROOT", "/data").rstrip("/")
+# Legacy single-file default (used only when tenant_id is absent)
+LEGACY_DB_PATH = os.environ.get("DB_PATH", "/data/aidelnicek.sqlite")
+
+_TENANT_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$")
 
 
-async def open_db() -> aiosqlite.Connection:
-    conn = await aiosqlite.connect(DB_PATH)
+def validate_tenant_id(tenant_id: str) -> str:
+    tid = tenant_id.strip().lower()
+    if not _TENANT_SLUG_RE.match(tid):
+        raise ValueError("invalid tenant_id")
+    return tid
+
+
+def sqlite_path_for_tenant(tenant_id: str) -> str:
+    """Return absolute path to aidelnicek.sqlite for a tenant data directory under DATA_ROOT."""
+    tid = validate_tenant_id(tenant_id)
+    root = Path(DATA_ROOT).resolve()
+    tenant_dir = (root / tid).resolve()
+    try:
+        tenant_dir.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("invalid tenant path") from exc
+    if not tenant_dir.is_dir():
+        raise ValueError("tenant data directory does not exist")
+    # SQLite creates the file on first connect; PHP may not have opened the DB yet.
+    return str(tenant_dir / "aidelnicek.sqlite")
+
+
+async def open_db(tenant_id: str | None = None) -> aiosqlite.Connection:
+    if tenant_id is None or tenant_id.strip() == "":
+        db_path = str(Path(LEGACY_DB_PATH).resolve())
+    else:
+        db_path = sqlite_path_for_tenant(tenant_id)
+
+    conn = await aiosqlite.connect(db_path)
     conn.row_factory = aiosqlite.Row
     await conn.execute("PRAGMA journal_mode=WAL")
     await conn.execute("PRAGMA foreign_keys=ON")

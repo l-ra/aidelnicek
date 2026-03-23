@@ -1,6 +1,6 @@
 # Multitenantnost datového úložiště (analýza a návrh)
 
-Tento dokument shrnuje analýzu požadavku na oddělení dat více domácností (tenantů) pod jednou nasazenou instancí aplikace a navrhuje způsob implementace. **Samotná implementace zde není provedena** — jde o podklad pro další práci.
+Tento dokument shrnuje analýzu požadavku na oddělení dat více domácností (tenantů) pod jednou nasazenou instancí aplikace a návrh řešení. **Implementace** odpovídající tomuto dokumentu je v kódu (tenant z prvního segmentu URL, `data/<tenant>/`, landing, worker s `tenant_id`, migrace starých souborů do `data/dplusk/`).
 
 ## 1. Požadavek (shrnutí)
 

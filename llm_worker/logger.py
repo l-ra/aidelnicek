@@ -1,25 +1,29 @@
 """
 LLM call logging — writes per-day SQLite files mirroring PHP LlmLogger.
 
-File path: same data directory as aidelnicek.sqlite, named llm_YYYY-MM-DD.db
+File path: same data directory as aidelnicek.sqlite for the tenant, named llm_YYYY-MM-DD.db
 Table structure matches PHP LlmLogger schema so PHP /admin/llm-logs can display
 records from both PHP and Python callers.
 """
 
 import os
-import sqlite3
 from datetime import datetime, timezone
 
+from database import LEGACY_DB_PATH, sqlite_path_for_tenant
 
-def _log_db_path() -> str:
+
+def _log_db_path(tenant_id: str | None = None) -> str:
     """Return today's log file path in the same directory as the main SQLite DB."""
-    db_path = os.environ.get("DB_PATH", "/data/aidelnicek.sqlite")
+    if tenant_id is not None and tenant_id.strip() != "":
+        db_path = sqlite_path_for_tenant(tenant_id)
+    else:
+        db_path = LEGACY_DB_PATH
     data_dir = os.path.dirname(db_path)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return os.path.join(data_dir, f"llm_{today}.db")
 
 
-def _ensure_schema(conn: sqlite3.Connection) -> None:
+def _ensure_schema(conn) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS llm_log (
             id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,10 +57,13 @@ def log_llm_call(
     status: str = "ok",
     error_message: str | None = None,
     user_id: int | None = None,
+    tenant_id: str | None = None,
 ) -> None:
     """Write an LLM call record to today's log SQLite file. Silently ignores errors."""
     try:
-        path = _log_db_path()
+        import sqlite3
+
+        path = _log_db_path(tenant_id)
         is_new = not os.path.exists(path)
         conn = sqlite3.connect(path)
         if is_new:
@@ -86,4 +93,4 @@ def log_llm_call(
         conn.commit()
         conn.close()
     except Exception:  # noqa: BLE001
-        pass  # Logging failure must never crash the application
+        pass

@@ -18,7 +18,7 @@ import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from database import create_job, open_db
+from database import DATA_ROOT, LEGACY_DB_PATH, create_job, open_db
 from generator import complete_sync, stream_and_store
 
 app = FastAPI(title="Aidelnicek LLM Worker", version="1.0.0")
@@ -27,6 +27,7 @@ _DEFAULT_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_COMPLETION_TOKENS", "1600
 
 
 class GenerateRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=64)
     user_id: int
     week_id: int
     job_type: str = Field(default="mealplan_generate")
@@ -50,6 +51,7 @@ class CompleteRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_completion_tokens: int = Field(default=1024, ge=64, le=128000)
     user_id: int | None = None
+    tenant_id: str | None = Field(default=None, max_length=64)
 
 
 class CompleteResponse(BaseModel):
@@ -63,8 +65,9 @@ class CompleteResponse(BaseModel):
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest) -> GenerateResponse:
     model = req.model or os.environ.get("OPENAI_MODEL", "gpt-4o")
+    tid = req.tenant_id.strip()
 
-    conn = await open_db()
+    conn = await open_db(tid)
     try:
         job_id = await create_job(
             conn=conn,
@@ -87,6 +90,7 @@ async def generate(req: GenerateRequest) -> GenerateResponse:
             model=model,
             temperature=req.temperature,
             max_completion_tokens=req.max_completion_tokens,
+            tenant_id=tid,
         )
     )
 
@@ -99,6 +103,7 @@ async def complete(req: CompleteRequest) -> CompleteResponse:
     model = req.model or os.environ.get("OPENAI_MODEL", "gpt-4o")
 
     try:
+        tid = req.tenant_id.strip() if req.tenant_id else None
         result = await complete_sync(
             system_prompt=req.system_prompt,
             user_prompt=req.user_prompt,
@@ -106,6 +111,7 @@ async def complete(req: CompleteRequest) -> CompleteResponse:
             temperature=req.temperature,
             max_completion_tokens=req.max_completion_tokens,
             user_id=req.user_id,
+            tenant_id=tid,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -115,9 +121,9 @@ async def complete(req: CompleteRequest) -> CompleteResponse:
 
 @app.get("/health")
 async def health() -> dict:
-    db_path = os.environ.get("DB_PATH", "/data/aidelnicek.sqlite")
     return {
         "status": "ok",
-        "db_path": db_path,
+        "data_root": DATA_ROOT,
+        "legacy_db_path": LEGACY_DB_PATH,
         "model": os.environ.get("OPENAI_MODEL", "gpt-4o"),
     }
