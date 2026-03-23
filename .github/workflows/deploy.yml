@@ -144,6 +144,16 @@ jobs:
             --namespace=${{ secrets.K8S_STAGING_NAMESPACE }} \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create SMTP mailer secret
+        run: |
+          kubectl create secret generic aidelnicek-mailer \
+            --from-literal=MAILER_HOST="${{ secrets.MAILER_HOST }}" \
+            --from-literal=MAILER_PORT="${{ secrets.MAILER_PORT }}" \
+            --from-literal=MAILER_LOGIN="${{ secrets.MAILER_LOGIN }}" \
+            --from-literal=MAILER_PASSWORD="${{ secrets.MAILER_PASSWORD }}" \
+            --namespace=${{ secrets.K8S_STAGING_NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy to Staging
         run: |
           helm upgrade --install aidelnicek ./helm/aidelnicek \

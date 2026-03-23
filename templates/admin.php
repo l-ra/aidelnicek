@@ -23,6 +23,11 @@ $passwordErrorMessages = [
 ];
 $passwordErrorMessage = $passwordErrorMessages[$passwordErrorCode] ?? null;
 
+$mailStatus = \Aidelnicek\Mailer::getAdminStatus();
+$emailTestOk = ($_GET['email_test'] ?? '') === 'ok';
+$emailTestErr = trim((string) ($_GET['email_test_error'] ?? ''));
+$emailTestCsrf = ($_GET['email_test'] ?? '') === 'csrf';
+
 ob_start();
 ?>
 <div class="admin-dashboard">
@@ -36,6 +41,24 @@ ob_start();
         <div class="alert alert-error"><?= htmlspecialchars($passwordErrorMessage) ?></div>
     <?php elseif ($csrfErr): ?>
         <div class="alert alert-error">Neplatný bezpečnostní token. Zkuste to znovu.</div>
+    <?php endif; ?>
+
+    <?php if ($emailTestOk): ?>
+        <div class="alert alert-success">Testovací e-mail byl odeslán na adresu <?= htmlspecialchars((string) ($currentUser['email'] ?? '')) ?>.</div>
+    <?php elseif ($emailTestCsrf): ?>
+        <div class="alert alert-error">Neplatný bezpečnostní token (test e-mailu). Zkuste to znovu.</div>
+    <?php elseif ($emailTestErr !== ''): ?>
+        <div class="alert alert-error">Odeslání testovacího e-mailu selhalo: <?= htmlspecialchars($emailTestErr) ?></div>
+    <?php endif; ?>
+
+    <?php if (!$mailStatus['configured']): ?>
+        <div class="alert alert-error" role="status">
+            Odesílání e-mailů není k dispozici: v prostředí nejsou nastaveny všechny proměnné
+            MAILER_HOST, MAILER_PORT, MAILER_LOGIN, MAILER_PASSWORD.
+            <?php if (!empty($mailStatus['missing'])): ?>
+                Chybí: <?= htmlspecialchars(implode(', ', $mailStatus['missing'])) ?>.
+            <?php endif; ?>
+        </div>
     <?php endif; ?>
 
     <div class="admin-cards">
@@ -124,6 +147,27 @@ ob_start();
                 </div>
                 <button type="submit" class="btn btn-secondary">Nastavit nové heslo</button>
             </form>
+        </div>
+
+        <div class="admin-card">
+            <h2>Odesílání e-mailů (SMTP)</h2>
+            <?php if ($mailStatus['configured']): ?>
+                <p>
+                    SMTP je nakonfigurováno
+                    <?php if ($mailStatus['host'] !== null && $mailStatus['port'] !== null): ?>
+                        (<?= htmlspecialchars($mailStatus['host']) ?>:<?= (int) $mailStatus['port'] ?>).
+                    <?php else: ?>
+                        .
+                    <?php endif; ?>
+                </p>
+                <p>Odešle testovací zprávu na e-mail přihlášeného administrátora.</p>
+                <form method="post" action="<?= Url::hu('/admin/mail-test') ?>">
+                    <?= \Aidelnicek\Csrf::field() ?>
+                    <button type="submit" class="btn btn-secondary">Odeslat testovací e-mail</button>
+                </form>
+            <?php else: ?>
+                <p>Nastavte v prostředí proměnné MAILER_HOST, MAILER_PORT, MAILER_LOGIN a MAILER_PASSWORD. Bez nich nelze e-maily odesílat.</p>
+            <?php endif; ?>
         </div>
 
         <div class="admin-card">
