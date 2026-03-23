@@ -24,8 +24,6 @@ use Aidelnicek\MealGenerator;
 use Aidelnicek\Tenant;
 use Aidelnicek\TenantContext;
 
-Tenant::migrateLegacyFlatFilesToDplusk($projectRoot);
-
 $tenants = Tenant::listTenantSlugs($projectRoot);
 if ($tenants === []) {
     echo date('Y-m-d H:i:s') . " — Žádní tenanti v data/.\n";
