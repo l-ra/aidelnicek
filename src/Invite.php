@@ -22,7 +22,7 @@ class Invite
 
     private static function getSecretKey(): string
     {
-        $dataDir    = dirname(__DIR__) . '/data';
+        $dataDir    = Database::getTenantDataDir();
         $secretFile = $dataDir . '/' . self::SECRET_FILE;
 
         if (!file_exists($secretFile)) {
@@ -133,6 +133,6 @@ class Invite
      */
     public static function getInviteUrl(string $email, int $validityHours = self::DEFAULT_VALIDITY_H): string
     {
-        return '/register?invite=' . urlencode(self::generateToken($email, $validityHours));
+        return Url::u('/register?invite=' . urlencode(self::generateToken($email, $validityHours)));
     }
 }

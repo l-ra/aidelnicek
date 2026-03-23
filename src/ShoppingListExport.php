@@ -18,7 +18,7 @@ class ShoppingListExport
 
     private static function getSecretKey(): string
     {
-        $dataDir    = dirname(__DIR__) . '/data';
+        $dataDir    = Database::getTenantDataDir();
         $secretFile = $dataDir . '/' . self::SECRET_FILE;
 
         if (!file_exists($secretFile)) {
@@ -132,7 +132,7 @@ class ShoppingListExport
     ): string {
         $token = self::generateExportToken($weekId, $validityHours);
         $format = in_array($format, ['csv', 'json'], true) ? $format : 'csv';
-        return '/shopping/export?token=' . urlencode($token) . '&format=' . $format;
+        return Url::u('/shopping/export?token=' . urlencode($token) . '&format=' . $format);
     }
 
     /**

@@ -28,6 +28,7 @@ class GenerationJobService
     public static function startJob(array $job): int
     {
         $payloadData = [
+            'tenant_id'             => TenantContext::requireSlug(),
             'user_id'               => (int) ($job['user_id'] ?? 0),
             'week_id'               => (int) ($job['week_id'] ?? 0),
             'job_type'              => (string) ($job['job_type'] ?? 'generic_completion'),

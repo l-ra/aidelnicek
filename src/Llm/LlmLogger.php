@@ -12,7 +12,7 @@ class LlmLogger
 {
     private function getDbPath(): string
     {
-        return dirname(__DIR__, 2) . '/data/llm_' . date('Y-m-d') . '.db';
+        return \Aidelnicek\Database::getTenantDataDir() . '/llm_' . date('Y-m-d') . '.db';
     }
 
     private function getConnection(): \PDO

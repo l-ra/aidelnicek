@@ -13,8 +13,46 @@ class Auth
     private const REMEMBER_DAYS = 30;
     private const REMEMBER_EXPIRY = 2592000; // 30 dní v sekundách
 
+    /**
+     * Nastaví session cookie path a název session podle tenanta (před session_start).
+     */
+    public static function configureTenantSession(): void
+    {
+        if (session_status() !== PHP_SESSION_NONE) {
+            return;
+        }
+        $slug = TenantContext::slug();
+        if ($slug === null || $slug === '') {
+            return;
+        }
+
+        $path = '/' . $slug . '/';
+        session_name('ASID_' . hash('crc32b', $slug));
+
+        $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+
+        session_set_cookie_params([
+            'lifetime' => 0,
+            'path'     => $path,
+            'secure'   => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    private static function cookiePath(): string
+    {
+        $slug = TenantContext::slug();
+        if ($slug === null || $slug === '') {
+            return '/';
+        }
+
+        return '/' . $slug . '/';
+    }
+
     public static function init(): void
     {
+        self::configureTenantSession();
         if (session_status() === PHP_SESSION_NONE) {
             session_start();
         }
@@ -68,7 +106,7 @@ class Auth
     private static function clearRememberCookie(): void
     {
         if (isset($_COOKIE[self::REMEMBER_COOKIE])) {
-            setcookie(self::REMEMBER_COOKIE, '', time() - 3600, '/', '', true, true);
+            setcookie(self::REMEMBER_COOKIE, '', time() - 3600, self::cookiePath(), '', true, true);
         }
     }
 
@@ -94,11 +132,16 @@ class Auth
                 self::REMEMBER_COOKIE,
                 $token,
                 time() + self::REMEMBER_EXPIRY,
-                '/',
+                self::cookiePath(),
                 '',
                 true,
                 true
             );
+        }
+
+        $user = User::findById($userId);
+        if ($user !== null && !empty($user['is_admin'])) {
+            Database::removeInitialAdminPasswordFileIfPresent();
         }
     }
 
@@ -147,7 +190,7 @@ class Auth
     {
         $user = self::getCurrentUser();
         if ($user === null) {
-            header('Location: /login');
+            header('Location: ' . Url::u('/login'));
             exit;
         }
         return $user;

@@ -6,25 +6,73 @@ use PDO;
 
 class Database
 {
-    private static ?PDO $connection = null;
-    private static string $dbPath;
+    private const INITIAL_ADMIN_PASSWORD_FILE = 'initial-admin-password.txt';
 
-    public static function init(string $basePath): void
+    private static ?PDO $connection = null;
+    private static string $dbPath = '';
+    private static string $dataDir = '';
+    private static ?string $activeTenantSlug = null;
+
+    /**
+     * Inicializace DB pro jednoho tenanta. Bez $tenantSlug pouze připraví kořen dat (CLI / landing).
+     *
+     * @throws \InvalidArgumentException tenant neexistuje
+     */
+    public static function init(string $basePath, ?string $tenantSlug = null): void
     {
-        $dataDir = $basePath . '/data';
-        if (!is_dir($dataDir)) {
-            mkdir($dataDir, 0755, true);
+        Tenant::migrateLegacyFlatFilesToDplusk($basePath);
+
+        $dataRoot = Tenant::dataRootPath($basePath);
+        if (!is_dir($dataRoot)) {
+            mkdir($dataRoot, 0755, true);
         }
-        self::$dbPath = $dataDir . '/aidelnicek.sqlite';
+
+        if ($tenantSlug === null || $tenantSlug === '') {
+            self::$connection = null;
+            self::$activeTenantSlug = null;
+            self::$dataDir = '';
+            self::$dbPath = '';
+
+            return;
+        }
+
+        if (!Tenant::tenantExists($basePath, $tenantSlug)) {
+            throw new \InvalidArgumentException('Neexistující tenant: ' . $tenantSlug);
+        }
+
+        if (self::$activeTenantSlug !== $tenantSlug) {
+            self::$connection = null;
+        }
+
+        self::$activeTenantSlug = $tenantSlug;
+        self::$dataDir = Tenant::tenantDataDir($basePath, $tenantSlug);
+        self::$dbPath = self::$dataDir . '/aidelnicek.sqlite';
+    }
+
+    public static function getTenantDataDir(): string
+    {
+        if (self::$dataDir === '') {
+            throw new \RuntimeException('Database: tenant data dir není nastaven — chybí init s tenant slug.');
+        }
+
+        return self::$dataDir;
     }
 
     public static function getPath(): string
     {
+        if (self::$dbPath === '') {
+            throw new \RuntimeException('Database: není nastavena cesta k SQLite.');
+        }
+
         return self::$dbPath;
     }
 
     public static function get(): PDO
     {
+        if (self::$dbPath === '') {
+            throw new \RuntimeException('Database: tenant není inicializován.');
+        }
+
         if (self::$connection === null) {
             self::$connection = new PDO(
                 'sqlite:' . self::$dbPath,
@@ -42,7 +90,22 @@ class Database
             self::runMigrations();
             self::ensureAdminUser();
         }
+
         return self::$connection;
+    }
+
+    /**
+     * Smaže soubor s počátečním heslem admina (po prvním úspěšném přihlášení admina).
+     */
+    public static function removeInitialAdminPasswordFileIfPresent(): void
+    {
+        if (self::$dataDir === '') {
+            return;
+        }
+        $file = self::$dataDir . '/' . self::INITIAL_ADMIN_PASSWORD_FILE;
+        if (is_file($file)) {
+            @unlink($file);
+        }
     }
 
     private static function runMigrations(): void
@@ -306,9 +369,9 @@ class Database
     /**
      * Zajistí existenci výchozího administrátorského účtu.
      *
-     * Spustí se při prvním otevření DB spojení. Pokud v databázi neexistuje žádný
-     * uživatel s příznakem is_admin = 1, vytvoří výchozí admin účet s náhodným heslem.
-     * Heslo je zapsáno do logu aplikace a do souboru /tmp/initial-admin-password.
+     * Pokud v databázi neexistuje žádný is_admin = 1, vytvoří admin@localhost
+     * s náhodným heslem. Heslo se zapíše jen do souboru initial-admin-password.txt
+     * v datové složce tenanta (a stručně do error_log).
      */
     private static function ensureAdminUser(): void
     {
@@ -327,17 +390,19 @@ class Database
             'INSERT INTO users (name, email, password_hash, is_admin) VALUES (?, ?, ?, 1)'
         )->execute(['Administrátor', 'admin@localhost', $hash]);
 
-        $message  = "Aidelnicek: Byl vytvořen výchozí administrátorský účet.\n"
+        $message  = "Aidelnicek: Byl vytvořen výchozí administrátorský účet (tenant).\n"
                   . "  E-mail:  admin@localhost\n"
                   . "  Heslo:   {$password}\n"
                   . "  Čas:     " . date('Y-m-d H:i:s') . "\n";
 
         error_log(str_replace("\n", ' | ', trim($message)));
 
-        $file    = '/tmp/initial-admin-password';
-        $written = @file_put_contents($file, $message);
-        if ($written !== false) {
-            @chmod($file, 0600);
+        if (self::$dataDir !== '') {
+            $file = self::$dataDir . '/' . self::INITIAL_ADMIN_PASSWORD_FILE;
+            $written = @file_put_contents($file, $message, LOCK_EX);
+            if ($written !== false) {
+                @chmod($file, 0600);
+            }
         }
     }
 }
