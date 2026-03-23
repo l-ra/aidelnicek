@@ -25,6 +25,33 @@ class Version
             }
         }
 
+        $envSha = self::envFirstNonEmpty(
+            'AIDELNICEK_GIT_SHA',
+            'GIT_SHA',
+            'GITHUB_SHA',
+            'COMMIT_SHA',
+            'VCS_REF'
+        );
+        if ($envSha !== null) {
+            $buildRaw = self::envFirstNonEmpty('BUILD_DATE', 'AIDELNICEK_BUILD_DATE');
+            if ($buildRaw === null) {
+                $epoch = getenv('SOURCE_DATE_EPOCH');
+                if ($epoch !== false && ctype_digit(trim($epoch))) {
+                    $buildRaw = '@' . trim($epoch);
+                }
+            }
+            $formattedDate = '—';
+            if ($buildRaw !== null) {
+                $date = date_create($buildRaw);
+                $formattedDate = $date ? $date->format('j. n. Y H:i') : $buildRaw;
+            }
+
+            return [
+                'version' => self::displayGitSha($envSha),
+                'build_date' => $formattedDate,
+            ];
+        }
+
         $gitDir = $projectRoot . '/.git';
         if (is_dir($gitDir)) {
             $version = self::runGit($projectRoot, 'rev-parse --short HEAD');
@@ -40,6 +67,34 @@ class Version
         }
 
         return null;
+    }
+
+    /**
+     * @param non-empty-string $name
+     */
+    private static function envFirstNonEmpty(string ...$names): ?string
+    {
+        foreach ($names as $name) {
+            $v = getenv($name);
+            if ($v !== false) {
+                $t = trim($v);
+                if ($t !== '') {
+                    return $t;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static function displayGitSha(string $sha): string
+    {
+        $sha = trim($sha);
+        if (preg_match('/^[0-9a-f]{40}$/i', $sha) === 1) {
+            return substr($sha, 0, 7);
+        }
+
+        return $sha;
     }
 
     private static function runGit(string $cwd, string $args): ?string
