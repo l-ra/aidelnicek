@@ -3,7 +3,7 @@ Vygeneruj podrobný recept pro následující jídlo:
 Název jídla: {MEAL_NAME}
 Krátký popis: {MEAL_DESCRIPTION}
 
-Ingredience:
+Ingredience (včetně koření a dochucení):
 {INGREDIENTS}
 
 Kontext porcí:

@@ -4,5 +4,6 @@ Pravidla:
 - Recept musí být realistický a snadno uvařitelný doma.
 - Uveď jasný postup krok za krokem.
 - Krokům přidej orientační časy, pokud dávají smysl.
-- Nepřidávej žádné ingredience, které nejsou nutné.
+- Nepřidávej žádné ingredience, které nejsou v seznamu (můžeš však doplnit běžné koření a dochucení, pokud v seznamu chybí a je pro jídlo typické).
+- Koření a dochucení (sůl, pepř, bylinky, česnek, atd.) používej průběžně v postupu — uveď v jakém kroku a jak je přidat, aby chuť vynikla (např. „orestuj s kmínem“, „dochuť solí a pepřem“, „přidej čerstvou petrželku před podáváním“).
 - Odpověď napiš jako čistý text (bez JSON, bez markdown tabulek).
