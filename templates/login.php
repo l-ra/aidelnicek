@@ -10,12 +10,16 @@ $errorMessage = match ($loginError) {
     'invite_required'  => 'Registrace je možná pouze prostřednictvím pozvánek. Kontaktujte správce.',
     default            => null,
 };
+$emailChangedNotice = ($_GET['email_changed'] ?? '') === '1';
 ob_start();
 ?>
 <section class="auth-form">
     <h1>Přihlášení</h1>
     <?php if ($errorMessage): ?>
         <p class="alert alert-error"><?= htmlspecialchars($errorMessage) ?></p>
+    <?php endif; ?>
+    <?php if ($emailChangedNotice): ?>
+        <p class="alert alert-success">E-mailová adresa byla změněna. Přihlaste se prosím novou adresou.</p>
     <?php endif; ?>
     <form method="post" action="<?= Url::hu('/login') ?>">
         <?= \Aidelnicek\Csrf::field() ?>
