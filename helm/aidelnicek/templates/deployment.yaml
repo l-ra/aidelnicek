@@ -36,6 +36,9 @@ spec:
             - secretRef:
                 name: {{ include "aidelnicek.fullname" . }}-llm
                 optional: true
+            - secretRef:
+                name: {{ include "aidelnicek.fullname" . }}-mailer
+                optional: true
           ports:
             - name: http
               containerPort: 80
