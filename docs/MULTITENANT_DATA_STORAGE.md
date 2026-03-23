@@ -1,6 +1,6 @@
 # Multitenantnost datového úložiště (analýza a návrh)
 
-Tento dokument shrnuje analýzu požadavku na oddělení dat více domácností (tenantů) pod jednou nasazenou instancí aplikace a návrh řešení. **Implementace** odpovídající tomuto dokumentu je v kódu (tenant z prvního segmentu URL, `data/<tenant>/`, landing, worker s `tenant_id`, migrace starých souborů do `data/dplusk/`).
+Tento dokument shrnuje analýzu požadavku na oddělení dat více domácností (tenantů) pod jednou nasazenou instancí aplikace a návrh řešení. **Implementace** odpovídající tomuto dokumentu je v kódu: tenant z prvního segmentu URL, `data/<tenant>/`, landing s výběrem / přesměrováním podle `localStorage`, `Router` s `urlBasePath`, session a cookie vázané na tenant, `Url` pro prefixované odkazy, LLM worker s `tenant_id`, projector a cron iterují všechny tenanty. **Automatická migrace** plochého rozložení souborů v `data/` do jedné podsložky tenanta **v aplikaci není** — data musí být od začátku (nebo ručně) v `{dataRoot}/<tenant>/`.
 
 ## 1. Požadavek (shrnutí)
 
@@ -12,36 +12,34 @@ Tento dokument shrnuje analýzu požadavku na oddělení dat více domácností 
 
 Poznámka k formulaci „kód aplikace neměnit uvnitř“: v praxi je nutné **upravit vstupní vrstvu** (bootstrap, router, generování URL, volání workeru) a místa, která dnes mají cestu k `data/` natvrdo. Logika domény (modely, šablony jako takové) může zůstat beze změny, pokud veškerý přístup k DB a souborům projde společným „tenant-aware“ kontextem.
 
-## 2. Současný stav v repozitáři
+## 2. Implementovaný stav v repozitáři
 
-### 2.1 PHP — databáze a soubory v `data/`
+### 2.1 PHP — vstup, tenant a databáze
 
-- `Database::init($projectRoot)` vytváří `{projectRoot}/data` a používá `{projectRoot}/data/aidelnicek.sqlite`. Spojení je **statické singleton** (`Database::get()`).
-- `Router` už podporuje **odříznutí URL prefixu** přes konstruktor `Router($projectRoot, $urlBasePath)`, ale `public/index.php` dnes volá `new Router($projectRoot)` bez druhého parametru.
-- **Přesměrování a odkazy** jsou v `public/index.php` a dalších místech většinou absolutní vůči kořenu hostitele (`header('Location: /login')`, atd.), nikoli vůči tenant prefixu.
-- `Auth` používá PHP session a cookie `remember_token` s cestou `'/'`. Session ani cookie nejsou v názvu vázané na tenant → **riziko prolnutí přihlášení** mezi tenanty na stejné doméně.
-- Soubory / cesty závislé na `data/`:
-  - `Invite::getSecretKey()` — `data/invite_secret.key`
-  - `ShoppingListExport::getSecretKey()` — stejný soubor
-  - `LlmLogger` — `data/llm_YYYY-MM-DD.db`
-  - `public/index.php` (endpoint admin LLM logů) — `projectRoot/data/<filename>`
+- `public/index.php` z prvního segmentu URL zjistí tenant, pokud je platný slug **a** existuje `{projectRoot}/data/<slug>/`. Jinak (neplatný segment) vrací **404**. Kořen `/` bez tenantu zobrazí **landing** (`templates/landing.php`) a ukončí request; aplikace pod prefixem pokračuje až po výběru existujícího tenanta.
+- `TenantContext` drží aktivní slug; `Database::init($projectRoot, ?string $tenantSlug)` pro konkrétního tenanta používá `{dataRoot}/<tenant>/aidelnicek.sqlite` (singleton PDO resetovaný při změně tenanta). Volání bez tenanta připraví jen kořen `data/` (landing / CLI).
+- `Router($projectRoot, $urlBasePath)` — u tenantovaných requestů je `$urlBasePath = '/<tenant>'`.
+- `Url::u()`, `Url::tenantLocation()` a šablony generují cesty **s tenant prefixem** tam, kde jde o aplikaci.
+- `Auth::configureTenantSession()` nastaví `session_name` a `session.cookie_path` na `/<tenant>/`; cookie `remember_token` má stejný `path` → **oddělené přihlášení** mezi tenanty na jedné doméně.
+
+### 2.2 Soubory pod `data/<tenant>/`
+
+Per tenant mimo jiného: `aidelnicek.sqlite`, `invite_secret.key`, `llm_*.db`, případně `initial-admin-password.txt` (bootstrap admina).
+
+### 2.3 LLM worker (Python)
+
+- Požadavky nesou `tenant_id`; worker sestaví cestu k DB pod `DATA_ROOT` / tenant složku (viz implementace v `llm_worker/`).
+- `GenerationJobService` doplňuje `tenant_id` z `TenantContext`.
+
+### 2.4 Kubernetes / Docker
+
+- Stejný datový svazek pro PHP (`…/data`) a worker (`/data`); soubory tenanta musí být na konzistentních cestách v obou kontejnerech (`…/data/<tenant>/…`).
+
+### 2.5 Procesy na pozadí
+
+- `bin/generation-projector.php` a `cron/generate_weekly.php` volají `Tenant::listTenantSlugs()` a pro **každého** tenanta nastaví kontext (`TenantContext::initFromSlug`, `Database::init`) a spustí stávající logiku.
 
 **Poznámka:** nástroj phpLiteAdmin byl z repozitáře odstraněn (viz sekce 7).
-
-### 2.2 LLM worker (Python)
-
-- `llm_worker/main.py`: `POST /generate` a `POST /complete`; databáze přes `database.open_db()` a `DB_PATH` (výchozí `/data/aidelnicek.sqlite`).
-- `GenerationJobService::startJob()` posílá JSON na `{LLM_WORKER_URL}/generate` **bez** pole pro tenant.
-
-### 2.3 Kubernetes / Docker
-
-- V `helm/aidelnicek/templates/deployment.yaml` je stejný PVC připojený jako `/var/www/html/data` (PHP) a jako `/data` (worker). Kořen svazku je sdílený: soubor viditelný jako `/data/aidelnicek.sqlite` v workeru odpovídá `/var/www/html/data/aidelnicek.sqlite` v kontejneru aplikace.
-- Po zavedení tenant složek musí zůstat zachována **konzistence cest** mezi PHP (`/var/www/html/data/<tenant>/…`) a workerem (`/data/<tenant>/…`).
-
-### 2.4 Pozadí procesy
-
-- `bin/generation-projector.php` volá `Database::init($projectRoot)` bez tenant kontextu — dnes implicitně jedna DB.
-- `cron/generate_weekly.php` stejně tak — jeden „globální“ tenant.
 
 ## 3. Cílový model
 
@@ -96,29 +94,26 @@ PHP při `startJob()` doplní `tenant_id` z aktuálního request kontextu.
 
 **Singleton `Database`:** před každým requestem správný `init` + při změně tenanta reset PDO (nebo request-scoped držení připojení).
 
-## 4. Oblasti, které bude nutné řešit (checklist implementace)
+## 4. Checklist implementace (stav)
 
-| Oblast | Problém | Směr řešení |
-|--------|---------|-------------|
-| Vstupní bod | Tenant z URL | Parsování `REQUEST_URI`; 404 pokud segment není platný tenant **nebo** neexistuje `{data}/<tenant>/` |
-| Landing `/` | Výběr tenantu | Statická nebo lehká PHP stránka + JS redirect z `localStorage`; zápis tenant ID po loginu |
-| `Database` | Jedna cesta | `{data}/<tenant>/aidelnicek.sqlite`; bootstrap admin + soubor s heslem + smazání po prvním admin loginu |
-| `Router` | Prefix | Předat `urlBasePath = '/<tenant>'` do `Router` pro tenantované routy |
-| Redirecty a odkazy | Absolutní `/…` | Centralizovaná funkce `url('/path')` zahrnující tenant prefix tam, kde jde o aplikaci |
-| Session a cookie | Sdílená doména | `session.cookie_path` = `/<tenant>/`; cookie `remember_token` s `path` = `/<tenant>/` (případně `session_name` per tenant) |
-| `Invite` / `ShoppingListExport` | `data/` natvrdo | Tenant `data/` adresář |
-| `LlmLogger` | Per-day db | `{data}/<tenant>/llm_*.db` |
-| `GenerationJobService` | Worker payload | Přidat `tenant_id` do JSON |
-| `llm_worker` | `DB_PATH` | Odvodit z `tenant_id` + `DATA_ROOT`; health endpoint |
-| Statické soubory | Prefix vs tenant | Společné `/css`, `/js` mimo tenant; rewrite / ingress pravidla |
-| Helm / Ingress | Cesty | Jedna nebo více path rules; statika bez prefixu, aplikace s `/…` tenant segmentem |
-| Projector a cron | Více tenantů | **Stejná logika pro všechny tenanty:** iterace podadresářů `data/*/` (nebo explicitní seznam složek), které vypadají jako platní tenanti; pro každý nastavit kontext a spustit stávající smyčku |
+| Oblast | Stav | Poznámka |
+|--------|------|----------|
+| Vstupní bod | Hotovo | `public/index.php` — tenant z URL, 404 pro neexistující / neplatný segment |
+| Landing `/` | Hotovo | `templates/landing.php`, `localStorage` (`aidelnicek_tenant`), zápis po přihlášení v `layout.php` |
+| `Database` | Hotovo | `{data}/<tenant>/aidelnicek.sqlite`; bootstrap admin + soubor s heslem (viz `Database.php`) |
+| `Router` | Hotovo | `Router($projectRoot, '/<tenant>')` |
+| Redirecty a odkazy | Hotovo | `Url::u()`, `Url::tenantLocation()` |
+| Session a cookie | Hotovo | `Auth::configureTenantSession()` — path a název session per tenant |
+| `Invite` / `ShoppingListExport` / LLM logy | Hotovo | Cesty pod `{data}/<tenant>/` |
+| `GenerationJobService` / worker | Hotovo | `tenant_id` v payloadu, worker podle `DATA_ROOT` |
+| Statika | Hotovo | Společné `/css`, `/js` bez tenant prefixu; rezervované slugy v `Tenant::RESERVED_SLUGS` |
+| Helm / Ingress | Konfigurace nasazení | Statika vs aplikace s tenant segmentem — dle prostředí |
+| Projector a cron | Hotovo | Iterace `Tenant::listTenantSlugs()` |
 
-## 5. Migrace existujících dat
+## 5. Data a „migrace“ z plochého rozložení
 
-- Dnešní instalace může mít data v `{projectRoot}/data/` přímo (flat layout).
-- Pro multitenant režim je potřeba **jednorázově** přesunout obsah do `{dataRoot}/<tenant_id>/` (např. `<tenant_id> = default`) nebo zároveň zavést provisioning nových složek jen pro nové domácnosti.
-- Rozhodnutí o výchozím `<tenant_id>` pro migraci starých deploymentů doplnit při nasazení.
+- Aplikace **nepřesouvá** soubory z plochého `{projectRoot}/data/*` do podsložky tenanta. Očekává se struktura `{dataRoot}/<tenant>/…` vytvořená provisioningem (nebo ručně).
+- Máte-li starší instalaci s databází a soubory přímo v `data/` (bez podsložky tenanta), je potřeba obsah **jednorázově přesunout** do zvolené složky tenanta (např. `data/moje-domacnost/`) mimo běh aplikace — bez automatické migrace v kódu.
 
 ## 6. Rizika a bezpečnost
 
@@ -140,6 +135,16 @@ PHP při `startJob()` doplní `tenant_id` z aktuálního request kontextu.
 | Cron a `generation-projector` | **Shodná logika pro všechny tenanty** (iterace všech tenantů) |
 | phpLiteAdmin | **Úplně odstraněn** z repozitáře (`public/admin/phpliteadmin.php`, `tools/phpliteadmin.php`) |
 
+## 8. Verze v zápatí (git hash)
+
+Řádek verze v `templates/layout.php` čte `Version::get()`, která v tomto pořadí použije:
+
+1. Soubor `{projectRoot}/version.json` (např. generovaný při Docker buildu z `GIT_SHA` / `BUILD_DATE`).
+2. Proměnné prostředí: `AIDELNICEK_GIT_SHA`, `GIT_SHA`, `GITHUB_SHA`, `COMMIT_SHA`, `VCS_REF` (volitelně `BUILD_DATE`, `AIDELNICEK_BUILD_DATE` nebo `SOURCE_DATE_EPOCH` pro datum sestavení).
+3. Je-li v nasazení dostupný adresář `.git`, krátký hash a datum posledního commitu přes `git`.
+
+V produkčním image často chybí `.git` i `version.json`; pro zobrazení hashe v zápatí tedy nastavte v runtime např. `GIT_SHA` z CI.
+
 ---
 
-*Dokument vytvořen jako součást plánovacího úkolu; implementace proběhne v samostatných commitech podle tohoto návrhu.*
+*Dokument popisuje návrh i aktuální implementaci; checklist v sekci 4 odráží stav v repozitáři.*

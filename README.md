@@ -15,11 +15,13 @@ Každý týden aplikace automaticky vygeneruje jídelníčky pro všechny uživa
 odpovídající sdílený nákupní seznam. Každý večer odešle uživatelům web push notifikaci
 s odkazem na jídelníček na následující den.
 
+Jedna nasazená instance může obsluhovat **více domácností (tenantů)** — každá má vlastní prefix v URL a izolovanou složku dat. Popis architektury: [docs/MULTITENANT_DATA_STORAGE.md](docs/MULTITENANT_DATA_STORAGE.md).
+
 ---
 
 ## 2. Uživatelé a domácnost
 
-- Aplikace podporuje **libovolný počet uživatelů** v rámci jedné domácnosti.
+- Aplikace podporuje **libovolný počet uživatelů** v rámci jedné domácnosti (jednoho tenantu).
 - Jeden uživatel má roli **správce** (zakládá domácnost, spravuje uživatele, generuje pozvánky).
 - Každý uživatel při registraci / v profilu zadává:
   - **Jméno** (zobrazované)
@@ -209,6 +211,8 @@ settings
 | Bezpečnost | HMAC-SHA256 podepsané pozvánky, session-based auth, CSRF ochrana — viz [docs/SECURITY.md](docs/SECURITY.md) |
 | Deployment | Kubernetes (Helm) + GitHub Actions — viz [docs/GITHUB_SECRETS.md](docs/GITHUB_SECRETS.md) |
 
+V zápatí stránky se může zobrazit **verze sestavení** (git hash): buď soubor `version.json` z Docker buildu, nebo proměnné prostředí `GIT_SHA` / `GITHUB_SHA` / `AIDELNICEK_GIT_SHA` (a případně datum přes `BUILD_DATE`), případně automaticky z `.git` při lokálním vývoji. Podrobněji v sekci 8 dokumentu [docs/MULTITENANT_DATA_STORAGE.md](docs/MULTITENANT_DATA_STORAGE.md).
+
 ---
 
 ## 10. Struktura projektu
@@ -225,6 +229,10 @@ settings
 │       └── app.js
 ├── src/
 │   ├── Database.php           -- SQLite connection + migrace + bootstrap admin uživatele
+│   ├── Tenant.php             -- validace slugů, výpis tenantů, cesty data/<tenant>/
+│   ├── TenantContext.php      -- aktivní tenant v requestu / CLI
+│   ├── Url.php                -- odkazy a redirecty s prefixem tenanta
+│   ├── Version.php            -- verze / git hash pro zápatí (version.json, env, .git)
 │   ├── Auth.php               -- autentizace, sessions
 │   ├── User.php               -- správa uživatelů a profilů
 │   ├── Invite.php             -- HMAC-SHA256 pozvánky pro registraci
@@ -257,8 +265,8 @@ settings
 │   └── send_notifications.php -- denní notifikace
 ├── prompts/                   -- šablony LLM promptů
 ├── data/
-│   ├── .gitkeep               -- SQLite DB se vytvoří automaticky
-│   └── invite_secret.key      -- HMAC tajemství (auto-generováno, není v gitu)
+│   ├── .gitkeep               -- SQLite DB a další soubory se vytvoří v data/<tenant>/
+│   └── <tenant>/              -- per-tenant: sqlite, invite_secret.key, LLM logy, …
 ├── helm/aidelnicek/           -- Kubernetes Helm chart
 ├── docs/                      -- implementační dokumentace
 ├── composer.json
@@ -269,14 +277,15 @@ settings
 
 ## 11. Obrazovky
 
-1. **Login** — přihlášení (registrace vyžaduje zvací odkaz).
-2. **Registrace (s pozvánkou)** — registrace po kliknutí na zvací odkaz; obsahuje všechny profilové údaje.
-3. **Profil** — úprava jména, pohlaví, věku, postavy, výšky, váhy, dietních omezení, cíle, push notifikací.
-4. **Dashboard** — dnešní jídelníček (5 jídel × 2 alternativy), rychlý odkaz na nákupní seznam.
-5. **Denní pohled** — detail jídel daného dne, výběr alternativy, odškrtávání.
-6. **Týdenní přehled** — kompaktní tabulka celého týdne.
-7. **Nákupní seznam** — sdílený seznam, filtr nakoupené/nenakoupené, přidávání položek.
-8. **Administrace** — přehled admin funkcí, generování jídelníčku, LLM test, logy, pozvánky.
+1. **Landing (`/`)** — výběr nebo přesměrování na domácnost (tenant); samotná aplikace běží pod `/<tenant>/…`.
+2. **Login** — přihlášení (registrace vyžaduje zvací odkaz).
+3. **Registrace (s pozvánkou)** — registrace po kliknutí na zvací odkaz; obsahuje všechny profilové údaje.
+4. **Profil** — úprava jména, pohlaví, věku, postavy, výšky, váhy, dietních omezení, cíle, push notifikací.
+5. **Dashboard** — dnešní jídelníček (5 jídel × 2 alternativy), rychlý odkaz na nákupní seznam.
+6. **Denní pohled** — detail jídel daného dne, výběr alternativy, odškrtávání.
+7. **Týdenní přehled** — kompaktní tabulka celého týdne.
+8. **Nákupní seznam** — sdílený seznam, filtr nakoupené/nenakoupené, přidávání položek.
+9. **Administrace** — přehled admin funkcí, generování jídelníčku, LLM test, logy, pozvánky.
 
 ---
 
