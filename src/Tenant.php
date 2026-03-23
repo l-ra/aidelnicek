@@ -9,8 +9,6 @@ namespace Aidelnicek;
  */
 final class Tenant
 {
-    public const DEFAULT_LEGACY_TARGET_SLUG = 'dplusk';
-
     /** Jeden segment URL — malá písmena, čísla, pomlčka, podtržítko. */
     private const SLUG_PATTERN = '/^[a-z0-9][a-z0-9_-]{0,62}$/';
 
@@ -76,52 +74,5 @@ final class Tenant
         sort($out);
 
         return $out;
-    }
-
-    /**
-     * Přesune soubory z plochého `{data}/*` do `{data}/dplusk/` (jednorázově).
-     * Adresáře v `data/` se nepřesouvají (jiní tenanti / ruční struktura).
-     */
-    public static function migrateLegacyFlatFilesToDplusk(string $projectRoot): void
-    {
-        $data   = self::dataRootPath($projectRoot);
-        $marker = $data . '/.legacy-migrated-to-dplusk';
-        if (file_exists($marker)) {
-            return;
-        }
-
-        if (!is_dir($data)) {
-            @mkdir($data, 0755, true);
-        }
-
-        $target = self::tenantDataDir($projectRoot, self::DEFAULT_LEGACY_TARGET_SLUG);
-        if (!is_dir($target)) {
-            mkdir($target, 0755, true);
-        }
-
-        foreach (scandir($data) ?: [] as $name) {
-            if ($name === '.' || $name === '..') {
-                continue;
-            }
-            if ($name === self::DEFAULT_LEGACY_TARGET_SLUG && is_dir($data . '/' . $name)) {
-                continue;
-            }
-            if ($name === '.legacy-migrated-to-dplusk') {
-                continue;
-            }
-            $full = $data . '/' . $name;
-            if (!is_file($full)) {
-                continue;
-            }
-            $dest = $target . '/' . $name;
-            if (file_exists($dest)) {
-                continue;
-            }
-            if (!@rename($full, $dest)) {
-                error_log("Tenant::migrateLegacyFlatFilesToDplusk: failed to move {$full}");
-            }
-        }
-
-        @file_put_contents($marker, date('c') . "\n", LOCK_EX);
     }
 }

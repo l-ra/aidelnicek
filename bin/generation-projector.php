@@ -11,8 +11,6 @@ use Aidelnicek\GenerationJobProjector;
 use Aidelnicek\Tenant;
 use Aidelnicek\TenantContext;
 
-Tenant::migrateLegacyFlatFilesToDplusk($projectRoot);
-
 $pollMs = max(200, (int) (getenv('PROJECTOR_POLL_INTERVAL_MS') ?: 1000));
 $batchSize = max(1, (int) (getenv('PROJECTOR_BATCH_SIZE') ?: 5));
 $recoverEveryLoops = max(5, (int) (getenv('PROJECTOR_RECOVER_EVERY_LOOPS') ?: 30));

@@ -28,8 +28,6 @@ $firstSeg    = $segments[0] ?? '';
 $tenantSlug  = null;
 $urlBasePath = '';
 
-Tenant::migrateLegacyFlatFilesToDplusk($projectRoot);
-
 if ($firstSeg !== '' && Tenant::isValidSlug($firstSeg) && Tenant::tenantExists($projectRoot, $firstSeg)) {
     $tenantSlug = $firstSeg;
     TenantContext::initFromSlug($tenantSlug);

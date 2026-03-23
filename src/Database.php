@@ -20,8 +20,6 @@ class Database
      */
     public static function init(string $basePath, ?string $tenantSlug = null): void
     {
-        Tenant::migrateLegacyFlatFilesToDplusk($basePath);
-
         $dataRoot = Tenant::dataRootPath($basePath);
         if (!is_dir($dataRoot)) {
             mkdir($dataRoot, 0755, true);
