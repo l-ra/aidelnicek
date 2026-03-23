@@ -9,6 +9,7 @@ use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
 use Aidelnicek\Invite;
+use Aidelnicek\Mailer;
 use Aidelnicek\MealGenerator;
 use Aidelnicek\MealHistory;
 use Aidelnicek\MealPlan;
@@ -218,6 +219,36 @@ $router->get('/admin', function () use ($projectRoot) {
     }
     require $projectRoot . '/templates/admin.php';
 });
+
+$router->post('/admin/mail-test', $requireCsrf('/admin?email_test=csrf', function () {
+    $adminUser = Auth::requireLogin();
+    if (!User::isAdmin((int) $adminUser['id'])) {
+        header('Location: ' . Url::u('/'));
+        exit;
+    }
+
+    if (!Mailer::isConfigured()) {
+        header('Location: ' . Url::u('/admin?email_test_error=' . rawurlencode('E-mail není nakonfigurován.')));
+        exit;
+    }
+
+    $to = trim((string) ($adminUser['email'] ?? ''));
+    if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        header('Location: ' . Url::u('/admin?email_test_error=' . rawurlencode('Účet administrátora nemá platnou e-mailovou adresu.')));
+        exit;
+    }
+
+    try {
+        $subject = 'Aidelníček — test SMTP';
+        $body = "Toto je testovací zpráva z administrace Aidelníček.\n\n"
+            . 'Čas odeslání: ' . date('c') . "\n";
+        Mailer::sendPlain($to, $subject, $body);
+        header('Location: ' . Url::u('/admin?email_test=ok'));
+    } catch (\Throwable $e) {
+        header('Location: ' . Url::u('/admin?email_test_error=' . rawurlencode($e->getMessage())));
+    }
+    exit;
+}));
 
 $router->post('/admin/user-password-reset', $requireCsrf('/admin?password_error=csrf', function () {
     $adminUser = Auth::requireLogin();
