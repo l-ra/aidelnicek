@@ -15,6 +15,13 @@ $passwordSuccess = $passwordSuccess ?? false;
 $errors = $errors ?? [];
 $passwordErrors = $passwordErrors ?? [];
 
+$emailChanged = $emailChanged ?? false;
+$emailChangeSent = $emailChangeSent ?? false;
+$emailChangeCancelled = $emailChangeCancelled ?? false;
+$emailChangeMailError = $emailChangeMailError ?? null;
+$pendingEmailChange = $pendingEmailChange ?? null;
+$emailChangeForm = $emailChangeForm ?? null;
+
 $csrfError = ($_GET['error'] ?? '') === 'csrf';
 
 $pageTitle = 'Profil';
@@ -31,6 +38,60 @@ ob_start();
     <?php if ($passwordSuccess): ?>
         <p class="alert alert-success">Heslo bylo úspěšně změněno.</p>
     <?php endif; ?>
+    <?php if ($emailChanged): ?>
+        <p class="alert alert-success">E-mailová adresa byla změněna.</p>
+    <?php endif; ?>
+    <?php if ($emailChangeSent): ?>
+        <p class="alert alert-success">Na novou adresu jsme odeslali e-mail s odkazem k potvrzení. Dokončete změnu v prohlížeči (náhled v poště nestačí).</p>
+    <?php endif; ?>
+    <?php if ($emailChangeCancelled): ?>
+        <p class="alert alert-success">Čekající změna e-mailu byla zrušena.</p>
+    <?php endif; ?>
+    <?php if ($emailChangeMailError !== null): ?>
+        <p class="alert alert-error"><?= htmlspecialchars($emailChangeMailError) ?></p>
+    <?php endif; ?>
+
+    <div class="form-group">
+        <label for="email">E-mail</label>
+        <input type="email" id="email" value="<?= htmlspecialchars($user['email'] ?? '') ?>" readonly autocomplete="username">
+        <?php if ($pendingEmailChange !== null): ?>
+            <p class="form-help">Čeká na potvrzení nové adresy: <strong><?= htmlspecialchars($pendingEmailChange['new_email']) ?></strong>
+                (platné do <?= htmlspecialchars($pendingEmailChange['expires_at']) ?>).</p>
+            <form method="post" action="<?= Url::hu('/profile/email-cancel') ?>" class="inline-form" style="margin-top:0.5rem;">
+                <?= \Aidelnicek\Csrf::field() ?>
+                <button type="submit" class="btn btn-secondary">Zrušit čekající změnu</button>
+            </form>
+        <?php else: ?>
+            <small class="form-help">Změnu e-mailu potvrdíte odkazem z nové schránky.</small>
+        <?php endif; ?>
+    </div>
+
+    <?php if ($pendingEmailChange === null): ?>
+    <h2>Změna e-mailu</h2>
+    <form method="post" action="<?= Url::hu('/profile/email-request') ?>" class="email-change-form">
+        <?= \Aidelnicek\Csrf::field() ?>
+        <div class="form-group">
+            <label for="new_email">Nový e-mail</label>
+            <input type="email" id="new_email" name="new_email" required autocomplete="email"
+                value="<?= htmlspecialchars($emailChangeForm['new_email'] ?? '') ?>">
+            <?php if (!empty($emailChangeForm['errors']['new_email'])): ?>
+                <span class="form-error"><?= htmlspecialchars($emailChangeForm['errors']['new_email']) ?></span>
+            <?php endif; ?>
+        </div>
+        <div class="form-group">
+            <label for="email_change_password">Heslo (ověření)</label>
+            <div class="password-toggle">
+                <input type="password" id="email_change_password" name="password" required autocomplete="current-password">
+                <button type="button" class="password-toggle-btn" aria-label="Zobrazit heslo">👁</button>
+            </div>
+            <?php if (!empty($emailChangeForm['errors']['password'])): ?>
+                <span class="form-error"><?= htmlspecialchars($emailChangeForm['errors']['password']) ?></span>
+            <?php endif; ?>
+        </div>
+        <button type="submit" class="btn btn-primary">Odeslat ověřovací odkaz</button>
+    </form>
+    <?php endif; ?>
+
     <form method="post" action="<?= Url::hu('/profile') ?>">
         <?= \Aidelnicek\Csrf::field() ?>
         <div class="form-group">
@@ -39,11 +100,6 @@ ob_start();
             <?php if (!empty($errors['name'])): ?>
                 <span class="form-error"><?= htmlspecialchars($errors['name']) ?></span>
             <?php endif; ?>
-        </div>
-        <div class="form-group">
-            <label for="email">E-mail</label>
-            <input type="email" id="email" value="<?= htmlspecialchars($user['email'] ?? '') ?>" disabled>
-            <small class="form-help">E-mail nelze měnit.</small>
         </div>
         <div class="form-group">
             <label for="gender">Pohlaví</label>

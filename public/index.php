@@ -8,6 +8,7 @@ require $projectRoot . '/vendor/autoload.php';
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
+use Aidelnicek\EmailChange;
 use Aidelnicek\Invite;
 use Aidelnicek\Mailer;
 use Aidelnicek\MealGenerator;
@@ -153,8 +154,20 @@ $router->post('/register', $requireCsrf('/register?error=csrf', function () use 
 
 $router->get('/profile', function () use ($projectRoot) {
     Auth::requireLogin();
+    $user = Auth::getCurrentUser();
     $success = ($_GET['success'] ?? '') === '1';
     $passwordSuccess = ($_GET['password_saved'] ?? '') === '1';
+    $emailChanged = ($_GET['email_changed'] ?? '') === '1';
+    $emailChangeSent = ($_GET['email_change_sent'] ?? '') === '1';
+    $emailChangeCancelled = ($_GET['email_change_cancelled'] ?? '') === '1';
+    $emailChangeMailError = match ($_GET['email_change_err'] ?? '') {
+        'not_configured' => 'Odeslání e-mailu není na serveru nakonfigurováno. Kontaktujte správce.',
+        'send_failed'    => 'Odeslání ověřovacího e-mailu se nezdařilo. Zkuste to prosím znovu později.',
+        default          => null,
+    };
+    $pendingEmailChange = $user !== null ? EmailChange::getPendingForUser((int) $user['id']) : null;
+    $emailChangeForm = $_SESSION['profile_email_change_form'] ?? null;
+    unset($_SESSION['profile_email_change_form']);
     require $projectRoot . '/templates/profile.php';
 });
 
@@ -182,6 +195,137 @@ $router->post('/profile', $requireCsrf('/profile?error=csrf', function () use ($
     $passwordErrors = [];
     require $projectRoot . '/templates/profile.php';
 }));
+
+$router->post('/profile/email-request', $requireCsrf('/profile?error=csrf', function () {
+    $user = Auth::requireLogin();
+    $userId = (int) $user['id'];
+    $currentNorm = mb_strtolower(trim((string) ($user['email'] ?? '')));
+
+    $start = EmailChange::startRequest(
+        $userId,
+        $currentNorm,
+        (string) ($_POST['new_email'] ?? ''),
+        (string) ($_POST['password'] ?? '')
+    );
+
+    if (!empty($start['errors'])) {
+        $_SESSION['profile_email_change_form'] = [
+            'new_email' => trim((string) ($_POST['new_email'] ?? '')),
+            'errors'    => $start['errors'],
+        ];
+        header('Location: ' . Url::u('/profile'));
+        exit;
+    }
+
+    if (!Mailer::isConfigured()) {
+        EmailChange::cancelPendingForUser($userId);
+        header('Location: ' . Url::u('/profile?email_change_err=not_configured'));
+        exit;
+    }
+
+    $requestId   = (int) ($start['request_id'] ?? 0);
+    $expiresUnix = (int) ($start['expires_unix'] ?? 0);
+    if ($requestId <= 0 || $expiresUnix <= 0) {
+        EmailChange::cancelPendingForUser($userId);
+        header('Location: ' . Url::u('/profile?email_change_err=send_failed'));
+        exit;
+    }
+
+    $db = Database::get();
+    $stmt = $db->prepare(
+        'SELECT new_email, old_email FROM email_change_requests WHERE id = ? AND user_id = ?'
+    );
+    $stmt->execute([$requestId, $userId]);
+    $row = $stmt->fetch();
+    if ($row === false) {
+        header('Location: ' . Url::u('/profile?email_change_err=send_failed'));
+        exit;
+    }
+
+    $newEmail = (string) $row['new_email'];
+    $oldEmail = (string) $row['old_email'];
+    $token    = EmailChange::buildSignedToken($requestId, $userId, $newEmail, $expiresUnix);
+    $confirmPath = Url::u('/profile/confirm-email?token=' . rawurlencode($token));
+    $confirmUrl  = EmailChange::absoluteBaseUrl() . $confirmPath;
+
+    $newBody = "Dobrý den,\n\n"
+        . "na účtu v Aidelníčku byla požádána změna e-mailové adresy na tuto schránku.\n\n"
+        . "Pro dokončení změny otevřete v prohlížeči tento odkaz:\n"
+        . $confirmUrl . "\n\n"
+        . "Na stránce potvrďte tlačítkem — otevření náhledu v poštovním klientovi nestačí.\n\n"
+        . "Pokud jste o změnu nežádali, tento e-mail ignorujte.\n";
+
+    $adminDefault = EmailChange::defaultAdminEmail();
+    try {
+        Mailer::sendPlain($newEmail, 'Aidelníček — potvrzení nové e-mailové adresy', $newBody);
+
+        if ($oldEmail !== '' && mb_strtolower($oldEmail) !== mb_strtolower($adminDefault)) {
+            $oldBody = "Dobrý den,\n\n"
+                . "na vašem účtu v Aidelníčku byla zahájena změna e-mailové adresy.\n"
+                . 'Nová adresa (po potvrzení): ' . $newEmail . "\n\n"
+                . "Pokud jste o změnu nežádali, co nejdříve kontaktujte správce domácnosti.\n";
+            Mailer::sendPlain($oldEmail, 'Aidelníček — oznámení o změně e-mailu', $oldBody);
+        }
+    } catch (\Throwable $e) {
+        EmailChange::cancelPendingForUser($userId);
+        header('Location: ' . Url::u('/profile?email_change_err=send_failed'));
+        exit;
+    }
+
+    header('Location: ' . Url::u('/profile?email_change_sent=1'));
+    exit;
+}));
+
+$router->post('/profile/email-cancel', $requireCsrf('/profile?error=csrf', function () {
+    $user = Auth::requireLogin();
+    EmailChange::cancelPendingForUser((int) $user['id']);
+    header('Location: ' . Url::u('/profile?email_change_cancelled=1'));
+    exit;
+}));
+
+$router->get('/profile/confirm-email', function () use ($projectRoot) {
+    $token = (string) ($_GET['token'] ?? '');
+    $linkState = EmailChange::confirmLinkState($token);
+    $confirmError = match ($_GET['err'] ?? '') {
+        'invalid', 'mismatch' => 'Odkaz je neplatný nebo nekompletní.',
+        'expired'             => 'Platnost odkazu vypršela. Požádejte o nový v profilu.',
+        'consumed'            => 'Tato žádost už byla vyřízena.',
+        'taken'               => 'Novou adresu mezitím používá jiný účet. Zvolte prosím jiný e-mail.',
+        default               => null,
+    };
+    require $projectRoot . '/templates/profile_confirm_email.php';
+});
+
+$router->post('/profile/confirm-email', function () {
+    $token = (string) ($_POST['token'] ?? '');
+    $back = $token !== ''
+        ? '/profile/confirm-email?token=' . rawurlencode($token) . '&error=csrf'
+        : '/profile/confirm-email?err=invalid';
+    if (!Csrf::validate((string) ($_POST['csrf_token'] ?? ''))) {
+        header('Location: ' . Url::u($back));
+        exit;
+    }
+
+    if ($token === '') {
+        header('Location: ' . Url::u('/profile/confirm-email?err=invalid'));
+        exit;
+    }
+
+    $result = EmailChange::applyConfirmedChange($token);
+    if ($result === 'ok') {
+        if (Auth::isLoggedIn()) {
+            header('Location: ' . Url::u('/profile?email_changed=1'));
+        } else {
+            header('Location: ' . Url::u('/login?email_changed=1'));
+        }
+        exit;
+    }
+
+    header(
+        'Location: ' . Url::u('/profile/confirm-email?token=' . rawurlencode($token) . '&err=' . rawurlencode($result))
+    );
+    exit;
+});
 
 $router->post('/profile-password', $requireCsrf('/profile?error=csrf', function () use ($projectRoot) {
     $user = Auth::requireLogin();
