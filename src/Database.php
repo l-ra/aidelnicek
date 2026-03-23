@@ -45,6 +45,35 @@ class Database
         self::$activeTenantSlug = $tenantSlug;
         self::$dataDir = Tenant::tenantDataDir($basePath, $tenantSlug);
         self::$dbPath = self::$dataDir . '/aidelnicek.sqlite';
+        self::assertTenantStorageWritable();
+    }
+
+    /**
+     * SQLite hlásí „attempt to write a readonly database“, když proces webového serveru
+     * nemůže zapisovat do souboru DB nebo do složky tenanta (WAL/-shm soubory).
+     */
+    private static function assertTenantStorageWritable(): void
+    {
+        if (self::$dataDir === '' || self::$dbPath === '') {
+            return;
+        }
+        if (!is_dir(self::$dataDir)) {
+            throw new \RuntimeException(
+                'Datová složka tenanta neexistuje: ' . self::$dataDir
+            );
+        }
+        if (!is_writable(self::$dataDir)) {
+            throw new \RuntimeException(
+                'Datová složka tenanta není zapisovatelná pro webový server: ' . self::$dataDir
+                . ' (oprávnění musí umožnit zápis kvůli SQLite a režimu WAL).'
+            );
+        }
+        if (is_file(self::$dbPath) && !is_writable(self::$dbPath)) {
+            throw new \RuntimeException(
+                'Soubor databáze SQLite není zapisovatelný: ' . self::$dbPath
+                . ' (chmod/chown pro uživatele webového serveru, např. www-data).'
+            );
+        }
     }
 
     public static function getTenantDataDir(): string
