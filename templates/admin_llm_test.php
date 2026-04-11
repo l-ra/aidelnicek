@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\User;
+use Aidelnicek\LlmEnv;
 use Aidelnicek\Url;
 
 $user = Auth::requireLogin();
@@ -15,6 +16,9 @@ if (!User::isAdmin((int) $user['id'])) {
 
 $pageTitle   = 'Test LLM';
 $currentUser = Auth::getCurrentUser();
+
+$llmDefaultMaxTokens = $llmDefaultMaxTokens ?? LlmEnv::maxCompletionTokens();
+$llmMaxTokensCap     = $llmMaxTokensCap ?? LlmEnv::MAX_COMPLETION_TOKENS_CAP;
 
 $defaultSystem = '';
 $systemFile    = dirname(__DIR__) . '/prompts/system.txt';
@@ -56,7 +60,8 @@ ob_start();
                     <div class="form-group">
                         <label for="llm-max-tokens">Max. tokenů</label>
                         <input type="number" id="llm-max-tokens" class="form-control llm-number-input"
-                               value="1024" min="64" max="32000" step="64">
+                               value="<?= (int) $llmDefaultMaxTokens ?>"
+                               min="64" max="<?= (int) $llmMaxTokensCap ?>" step="64">
                     </div>
                 </div>
 

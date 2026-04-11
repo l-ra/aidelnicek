@@ -39,6 +39,9 @@ spec:
             - secretRef:
                 name: {{ include "aidelnicek.fullname" . }}-mailer
                 optional: true
+          env:
+            - name: LLM_MAX_COMPLETION_TOKENS
+              value: {{ .Values.llm.maxCompletionTokens | quote }}
           ports:
             - name: http
               containerPort: 80
@@ -59,6 +62,9 @@ spec:
             - secretRef:
                 name: {{ include "aidelnicek.fullname" . }}-llm
                 optional: true
+          env:
+            - name: LLM_MAX_COMPLETION_TOKENS
+              value: {{ .Values.llm.maxCompletionTokens | quote }}
           resources:
             {{- toYaml .Values.projector.resources | nindent 12 }}
           volumeMounts:
@@ -73,6 +79,8 @@ spec:
                 name: {{ include "aidelnicek.fullname" . }}-llm
                 optional: true
           env:
+            - name: LLM_MAX_COMPLETION_TOKENS
+              value: {{ .Values.llm.maxCompletionTokens | quote }}
             - name: DATA_ROOT
               value: /data
             - name: DB_PATH

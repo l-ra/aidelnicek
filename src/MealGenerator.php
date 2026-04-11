@@ -103,7 +103,7 @@ class MealGenerator
             'user_prompt'           => $userPrompt,
             'model'                 => getenv('OPENAI_MODEL') ?: 'gpt-4o',
             'temperature'           => 0.8,
-            'max_completion_tokens' => (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000),
+            'max_completion_tokens' => LlmEnv::maxCompletionTokens(),
             'force'                 => $force,
         ];
 

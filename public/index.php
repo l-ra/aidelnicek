@@ -10,6 +10,7 @@ use Aidelnicek\Csrf;
 use Aidelnicek\Database;
 use Aidelnicek\EmailChange;
 use Aidelnicek\Invite;
+use Aidelnicek\LlmEnv;
 use Aidelnicek\Mailer;
 use Aidelnicek\MealGenerator;
 use Aidelnicek\MealHistory;
@@ -620,6 +621,8 @@ $router->get('/admin/llm-test', function () use ($projectRoot) {
         header('Location: ' . Url::u('/'));
         exit;
     }
+    $llmDefaultMaxTokens = LlmEnv::maxCompletionTokens();
+    $llmMaxTokensCap     = LlmEnv::MAX_COMPLETION_TOKENS_CAP;
     require $projectRoot . '/templates/admin_llm_test.php';
 });
 
@@ -643,7 +646,8 @@ $router->post('/admin/llm-test', function () use ($projectRoot) {
     $systemPrompt = trim($_POST['system_prompt'] ?? '');
     $userPrompt   = trim($_POST['user_prompt']   ?? '');
     $temperature  = isset($_POST['temperature']) ? (float) $_POST['temperature'] : 0.7;
-    $maxTokens    = isset($_POST['max_tokens'])  ? (int)   $_POST['max_tokens']  : 1024;
+    $defaultMax   = LlmEnv::maxCompletionTokens();
+    $maxTokens    = isset($_POST['max_tokens']) ? (int) $_POST['max_tokens'] : $defaultMax;
 
     if ($userPrompt === '') {
         header('Content-Type: application/json');
@@ -663,7 +667,7 @@ $router->post('/admin/llm-test', function () use ($projectRoot) {
             'user_prompt'           => $userPrompt,
             'model'                 => $model,
             'temperature'           => max(0.0, min(2.0, $temperature)),
-            'max_completion_tokens' => max(64, min(32000, $maxTokens)),
+            'max_completion_tokens' => max(64, min(LlmEnv::MAX_COMPLETION_TOKENS_CAP, $maxTokens)),
             'input_payload'         => ['source' => 'admin_llm_test'],
         ]);
 

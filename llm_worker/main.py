@@ -23,7 +23,17 @@ from generator import complete_sync, stream_and_store
 
 app = FastAPI(title="Aidelnicek LLM Worker", version="1.0.0")
 
-_DEFAULT_MAX_TOKENS: int = int(os.environ.get("LLM_MAX_COMPLETION_TOKENS", "16000"))
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(64, min(128_000, int(raw)))
+    except ValueError:
+        return default
+
+
+_DEFAULT_MAX_TOKENS: int = _env_int("LLM_MAX_COMPLETION_TOKENS", 16000)
 
 
 class GenerateRequest(BaseModel):
@@ -49,7 +59,7 @@ class CompleteRequest(BaseModel):
     user_prompt: str
     model: str = Field(default="")
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
-    max_completion_tokens: int = Field(default=1024, ge=64, le=128000)
+    max_completion_tokens: int = Field(default=_DEFAULT_MAX_TOKENS, ge=64, le=128000)
     user_id: int | None = None
     tenant_id: str | None = Field(default=None, max_length=64)
 
