@@ -297,9 +297,7 @@ final class EmailChange
 
     public static function absoluteBaseUrl(): string
     {
-        $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
-
-        return ($https ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        return Url::absoluteBaseUrl();
     }
 
     /**

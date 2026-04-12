@@ -1547,8 +1547,7 @@ $router->get('/shopping', function () use ($projectRoot) {
     // Auto-generate shopping list if no auto-generated items exist yet
     ShoppingList::generateFromMealPlans($weekId);
 
-    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http')
-        . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost');
+    $baseUrl            = Url::absoluteBaseUrl();
     $exportSignedUrlCsv  = $baseUrl . ShoppingListExport::getSignedExportUrl($weekId, 'csv');
     $exportSignedUrlJson = $baseUrl . ShoppingListExport::getSignedExportUrl($weekId, 'json');
 

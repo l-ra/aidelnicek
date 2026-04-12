@@ -71,7 +71,7 @@ ob_start();
             <?php if (!empty($shareSignedUrl ?? '')): ?>
                 <button type="button"
                         class="btn btn-secondary btn-sm js-copy-signed-link"
-                        data-copy-url="<?= htmlspecialchars($shareSignedUrl) ?>"
+                        data-copy-url="<?= htmlspecialchars($shareSignedUrl, ENT_QUOTES, 'UTF-8') ?>"
                         title="Veřejný odkaz platný <?= (int) ($shareValidityHours ?? 0) ?> hodin">
                     Sdílet denní jídelníček
                 </button>

@@ -833,35 +833,55 @@ function initShoppingCopySignedLink() {
                 || '';
             if (!url) { return; }
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(url).then(function () {
-                    var orig = btn.textContent;
-                    btn.textContent = 'Odkaz zkopírován';
-                    setTimeout(function () { btn.textContent = orig; }, 2000);
-                }).catch(function () {
-                    fallbackCopy(url, btn);
-                });
-            } else {
-                fallbackCopy(url, btn);
-            }
+            copyTextToClipboard(url, btn);
         });
     });
 }
 
-function fallbackCopy(text, btn) {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-        document.execCommand('copy');
-        var orig = btn.textContent;
+/**
+ * Copies text to the clipboard. Prefers async API; falls back to a focused textarea
+ * so copy works on HTTP and when the Clipboard API is blocked.
+ */
+function copyTextToClipboard(text, btn) {
+    var orig = btn.textContent;
+
+    function showCopied() {
         btn.textContent = 'Odkaz zkopírován';
         setTimeout(function () { btn.textContent = orig; }, 2000);
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showCopied).catch(function () {
+            fallbackCopy(text, btn, showCopied);
+        });
+    } else {
+        fallbackCopy(text, btn, showCopied);
+    }
+}
+
+function fallbackCopy(text, btn, onSuccess) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '1px';
+    ta.style.height = '1px';
+    ta.style.opacity = '0';
+    ta.style.pointerEvents = 'none';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    var ok = false;
+    try {
+        ok = document.execCommand('copy');
     } catch (e) { /* ignore */ }
     document.body.removeChild(ta);
+    if (ok && typeof onSuccess === 'function') {
+        onSuccess();
+    }
 }
 
 /**

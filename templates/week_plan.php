@@ -40,14 +40,16 @@ ob_start();
             <?php endif; ?>
         </h1>
         <div class="plan-share-actions">
+            <?php if (!empty($shareSignedUrl ?? '')): ?>
             <button
                 type="button"
                 class="btn btn-secondary btn-sm js-copy-signed-link"
-                data-copy-url="<?= htmlspecialchars($shareSignedUrl ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                data-copy-url="<?= htmlspecialchars($shareSignedUrl, ENT_QUOTES, 'UTF-8') ?>"
                 title="Veřejný odkaz platný <?= (int) ($shareValidityHours ?? 0) ?> hodin"
             >
                 Sdílet týden
             </button>
+            <?php endif; ?>
         </div>
         <a href="<?= Url::hu('/plan/week?week=' . $nextWeek . '&year=' . $nextYear) ?>" class="btn btn-secondary btn-sm">
             Další &rarr;

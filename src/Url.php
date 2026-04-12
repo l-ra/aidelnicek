@@ -75,6 +75,45 @@ final class Url
     }
 
     /**
+     * Zjistí, zda klient přistupuje přes HTTPS (včetně běžných hlaviček za reverse proxy).
+     */
+    public static function isRequestHttps(): bool
+    {
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+            return true;
+        }
+
+        $proto = $_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '';
+        if (is_string($proto) && $proto !== '') {
+            $first = strtolower(trim(explode(',', $proto)[0]));
+            if ($first === 'https') {
+                return true;
+            }
+        }
+
+        $xfSsl = $_SERVER['HTTP_X_FORWARDED_SSL'] ?? '';
+        if (is_string($xfSsl) && strtolower(trim($xfSsl)) === 'on') {
+            return true;
+        }
+
+        if (isset($_SERVER['REQUEST_SCHEME']) && strtolower((string) $_SERVER['REQUEST_SCHEME']) === 'https') {
+            return true;
+        }
+
+        return isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443;
+    }
+
+    /**
+     * Kořenová absolutní URL aktuálního požadavku (schéma + host), bez koncového lomítka.
+     */
+    public static function absoluteBaseUrl(): string
+    {
+        $host = (string) ($_SERVER['HTTP_HOST'] ?? 'localhost');
+
+        return (self::isRequestHttps() ? 'https' : 'http') . '://' . ($host !== '' ? $host : 'localhost');
+    }
+
+    /**
      * Query řetězec pro denní plán (den v týdnu + ISO týden a rok v DB).
      *
      * @param array{week_number: int|string, year: int|string} $week
