@@ -73,4 +73,4 @@ autoscaling:
 persistence:
   enabled: true
   storageClass: ""
-  size: 1Gi
+  size: 2Gi
