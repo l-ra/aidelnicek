@@ -9,6 +9,7 @@ $week = $week ?? [];
 $weekNumber = (int) ($week['week_number'] ?? 0);
 $weekYear   = (int) ($week['year'] ?? 0);
 $sharedWeekUrl = $sharedWeekUrl ?? '';
+$shareExpiresAt = (int) ($share['expires'] ?? 0);
 
 $weekStart = (new DateTimeImmutable())->setISODate($weekYear, $weekNumber, 1);
 
@@ -50,11 +51,14 @@ ob_start();
                             <?php $chosen = $weekPlan[$d][$mealType] ?? null; ?>
                             <td>
                                 <?php if (is_array($chosen)): ?>
-                                    <div class="week-table__cell-link week-table__cell-link--shared">
-                                        <span><?= htmlspecialchars((string) ($chosen['meal_name'] ?? '')) ?></span>
+                                    <div class="week-table__cell-inner week-table__cell-inner--shared">
+                                        <a
+                                            href="<?= htmlspecialchars(PlanShare::getSignedPlanUrl((int) $share['user_id'], (int) $week['id'], $d, PlanShare::getDefaultValidityHours(), $shareExpiresAt)) ?>"
+                                            class="week-table__cell-link"
+                                        ><?= htmlspecialchars((string) ($chosen['meal_name'] ?? '')) ?></a>
                                         <?php if ((int) ($chosen['has_recipe'] ?? 0) === 1): ?>
                                             <a
-                                                href="<?= htmlspecialchars(PlanShare::getSignedRecipeUrl((int) $share['user_id'], (int) $chosen['id'], (int) $week['id'], $d, PlanShare::getDefaultValidityHours(), (int) ($share['expires'] ?? 0))) ?>"
+                                                href="<?= htmlspecialchars(PlanShare::getSignedRecipeUrl((int) $share['user_id'], (int) $chosen['id'], (int) $week['id'], $d, PlanShare::getDefaultValidityHours(), $shareExpiresAt)) ?>"
                                                 class="week-table__recipe-link"
                                             >
                                                 Recept
