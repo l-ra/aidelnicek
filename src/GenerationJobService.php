@@ -38,7 +38,7 @@ class GenerationJobService
             'model'                 => (string) ($job['model'] ?? (getenv('OPENAI_MODEL') ?: 'gpt-4o')),
             'temperature'           => (float) ($job['temperature'] ?? 0.7),
             'max_completion_tokens' => (int) (
-                $job['max_completion_tokens'] ?? (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000)
+                $job['max_completion_tokens'] ?? LlmEnv::maxCompletionTokens()
             ),
             'input_payload'         => (array) ($job['input_payload'] ?? []),
         ];

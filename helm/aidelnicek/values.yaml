@@ -5,6 +5,11 @@ image:
   pullPolicy: IfNotPresent
   tag: ""
 
+# Maximální počet výstupních tokenů na jedno volání LLM (PHP + llm-worker v podu).
+# Lze přepsat také v Kubernetes Secretu aidelnicek-llm (envFrom má přednost).
+llm:
+  maxCompletionTokens: 16000
+
 llmWorker:
   image:
     repository: ghcr.io/l-ra/aidelnicek-llm-worker

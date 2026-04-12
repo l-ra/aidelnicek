@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Aidelnicek\Llm;
 
+use Aidelnicek\LlmEnv;
+
 /**
  * OpenAI provider pro LLM vrstvu.
  *
@@ -35,7 +37,7 @@ class OpenAiProvider implements LlmInterface
 
     public function complete(string $systemPrompt, string $userPrompt, array $options = []): string
     {
-        $defaultMaxTokens = (int) (getenv('LLM_MAX_COMPLETION_TOKENS') ?: 16000);
+        $defaultMaxTokens = LlmEnv::maxCompletionTokens();
         $payload = [
             'model'       => $this->model,
             'messages'    => [

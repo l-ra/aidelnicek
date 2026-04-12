@@ -391,7 +391,7 @@ class MealRecipe
             'user_prompt' => $userPrompt,
             'model' => $model,
             'temperature' => 0.3,
-            'max_completion_tokens' => 2200,
+            'max_completion_tokens' => LlmEnv::maxCompletionTokens(),
             'input_payload' => [
                 'plan_id' => isset($plan['id']) ? (int) $plan['id'] : null,
                 'proposal_meal_id' => isset($plan['proposal_meal_id']) ? (int) $plan['proposal_meal_id'] : null,
@@ -423,7 +423,7 @@ class MealRecipe
             'user_prompt' => $userPrompt,
             'model' => $model,
             'temperature' => 0.3,
-            'max_completion_tokens' => 2200,
+            'max_completion_tokens' => LlmEnv::maxCompletionTokens(),
             'input_payload' => [
                 'plan_id' => isset($plan['id']) ? (int) $plan['id'] : null,
                 'proposal_meal_id' => isset($plan['proposal_meal_id']) ? (int) $plan['proposal_meal_id'] : null,
