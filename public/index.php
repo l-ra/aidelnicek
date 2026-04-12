@@ -991,7 +991,9 @@ $router->get('/llm/jobs-running-count', function () {
 
 $router->get('/plan', function () {
     Auth::requireLogin();
-    header('Location: ' . Url::u('/plan/day'));
+    $week     = MealPlan::getOrCreateCurrentWeek();
+    $todayIso = (int) date('N');
+    header('Location: ' . Url::u(Url::planDayPath($todayIso, $week)));
     exit;
 });
 
@@ -999,12 +1001,25 @@ $router->get('/plan/day', function () use ($projectRoot) {
     $user   = Auth::requireLogin();
     $userId = (int) $user['id'];
 
-    $week      = MealPlan::getOrCreateCurrentWeek();
-    $weekId    = (int) $week['id'];
-    $todayIso  = (int) date('N'); // 1=Mon … 7=Sun
+    $todayIso = (int) date('N'); // 1=Mon … 7=Sun
 
     $day = isset($_GET['day']) ? (int) $_GET['day'] : $todayIso;
     $day = max(1, min(7, $day));
+
+    $reqWeek = isset($_GET['week']) ? (int) $_GET['week'] : null;
+    $reqYear = isset($_GET['year']) ? (int) $_GET['year'] : null;
+    $week    = MealPlan::resolveWeekFromRequest($reqWeek, $reqYear);
+    $weekId  = (int) $week['id'];
+
+    parse_str($_SERVER['QUERY_STRING'] ?? '', $planDayQueryParams);
+    $canonicalOk = isset($planDayQueryParams['day'], $planDayQueryParams['week'], $planDayQueryParams['year'])
+        && (int) $planDayQueryParams['day'] === $day
+        && (int) $planDayQueryParams['week'] === (int) $week['week_number']
+        && (int) $planDayQueryParams['year'] === (int) $week['year'];
+    if (!$canonicalOk) {
+        header('Location: ' . Url::u('/plan/day?' . Url::planDayQuery($day, $week)));
+        exit;
+    }
 
     MealPlan::ensureSingleChosenPerSlot($userId, $weekId);
     $dayPlan = MealPlan::getDayPlan($userId, $weekId, $day);
@@ -1019,17 +1034,31 @@ $router->get('/plan/day/meal', function () use ($projectRoot) {
     $user   = Auth::requireLogin();
     $userId = (int) $user['id'];
 
-    $week     = MealPlan::getOrCreateCurrentWeek();
-    $weekId   = (int) $week['id'];
     $todayIso = (int) date('N');
 
     $day      = isset($_GET['day']) ? (int) $_GET['day'] : $todayIso;
     $day      = max(1, min(7, $day));
     $mealType = isset($_GET['meal_type']) ? (string) $_GET['meal_type'] : '';
 
+    $reqWeek = isset($_GET['week']) ? (int) $_GET['week'] : null;
+    $reqYear = isset($_GET['year']) ? (int) $_GET['year'] : null;
+    $week    = MealPlan::resolveWeekFromRequest($reqWeek, $reqYear);
+    $weekId  = (int) $week['id'];
+
     $validMealTypes = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
     if (!in_array($mealType, $validMealTypes, true)) {
-        header('Location: ' . Url::u('/plan/day?day=' . $day));
+        header('Location: ' . Url::u(Url::planDayPath($day, $week)));
+        exit;
+    }
+
+    parse_str($_SERVER['QUERY_STRING'] ?? '', $mealQueryParams);
+    $canonicalMealOk = isset($mealQueryParams['day'], $mealQueryParams['meal_type'], $mealQueryParams['week'], $mealQueryParams['year'])
+        && (int) $mealQueryParams['day'] === $day
+        && (string) $mealQueryParams['meal_type'] === $mealType
+        && (int) $mealQueryParams['week'] === (int) $week['week_number']
+        && (int) $mealQueryParams['year'] === (int) $week['year'];
+    if (!$canonicalMealOk) {
+        header('Location: ' . Url::u(Url::planDayMealPath($day, $mealType, $week)));
         exit;
     }
 
@@ -1054,9 +1083,9 @@ $router->get('/plan/day/meal', function () use ($projectRoot) {
     $chosenAlt = $chosenAltNum !== null ? ($chosenAltNum === 1 ? $alt1 : $alt2) : ($alt1 ?? $alt2);
     $otherAlt  = ($chosenAltNum === 1 ? $alt2 : $alt1);
 
-    $weekStart = new DateTimeImmutable('monday this week');
+    $weekStart = (new DateTimeImmutable())->setISODate((int) $week['year'], (int) $week['week_number'], 1);
     $dayDate   = $weekStart->modify('+' . ($day - 1) . ' days');
-    $currentRedirect = '/plan/day?day=' . $day;
+    $currentRedirect = Url::planDayPath($day, $week);
 
     $currentUser = $user;
     require $projectRoot . '/templates/meal_detail.php';
@@ -1112,20 +1141,7 @@ $router->get('/plan/week', function () use ($projectRoot) {
     $requestedYear = isset($_GET['year']) ? (int) $_GET['year'] : null;
 
     if ($requestedWeek !== null && $requestedYear !== null) {
-        $stmt = \Aidelnicek\Database::get()->prepare(
-            'SELECT * FROM weeks WHERE week_number = ? AND year = ?'
-        );
-        $stmt->execute([$requestedWeek, $requestedYear]);
-        $weekRow = $stmt->fetch();
-        if ($weekRow === false) {
-            // Create week entry for navigation to past/future weeks
-            \Aidelnicek\Database::get()->prepare(
-                'INSERT OR IGNORE INTO weeks (week_number, year) VALUES (?, ?)'
-            )->execute([$requestedWeek, $requestedYear]);
-            $stmt->execute([$requestedWeek, $requestedYear]);
-            $weekRow = $stmt->fetch();
-        }
-        $week = $weekRow;
+        $week = MealPlan::getOrCreateWeekByNumberAndYear($requestedWeek, $requestedYear);
     } else {
         $week = $currentWeek;
     }
@@ -1320,20 +1336,24 @@ $router->get('/plan/recipe/view', function () use ($projectRoot) {
 
     $planId = isset($_GET['plan_id']) ? (int) $_GET['plan_id'] : 0;
     if ($planId <= 0) {
-        header('Location: ' . Url::u('/plan/day'));
+        $week     = MealPlan::getOrCreateCurrentWeek();
+        $todayIso = (int) date('N');
+        header('Location: ' . Url::u(Url::planDayPath($todayIso, $week)));
         exit;
     }
 
     $recipe = MealRecipe::getRecipeForView($userId, $planId);
     if ($recipe === null) {
         $pageTitle = 'Recept nenalezen';
+        $backToPlan = MealRecipe::planDayBackPathForPlanId($userId, $planId);
         $content  = '<section class="error-page"><h1>Recept nenalezen</h1><p>Recept pro toto jídlo nebyl nalezen nebo ještě nebyl vygenerován.</p><a href="'
-            . htmlspecialchars(Url::u('/plan/day')) . '" class="btn">Zpět na jídelníček</a></section>';
+            . htmlspecialchars($backToPlan) . '" class="btn">Zpět na jídelníček</a></section>';
         require $projectRoot . '/templates/layout.php';
         exit;
     }
 
     $pageTitle = htmlspecialchars($recipe['meal_name']);
+    $recipeBackUrl = MealRecipe::planDayBackPathForPlanId($userId, $planId);
     ob_start();
     require $projectRoot . '/templates/recipe_view.php';
     $content = ob_get_clean();

@@ -79,6 +79,13 @@ echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
         </div>
     </footer>
     <script>window.AIDELNICEK_BASE_PATH = <?= json_encode(\Aidelnicek\Url::basePath(), JSON_UNESCAPED_SLASHES) ?>;</script>
+    <?php if (!empty($planDayJsDefault) && is_array($planDayJsDefault)): ?>
+    <script>window.AIDELNICEK_PLAN_DAY_DEFAULT = <?= json_encode([
+        'day'  => (int) ($planDayJsDefault['day'] ?? 1),
+        'week' => (int) ($planDayJsDefault['week'] ?? 0),
+        'year' => (int) ($planDayJsDefault['year'] ?? 0),
+    ], JSON_UNESCAPED_UNICODE) ?>;</script>
+    <?php endif; ?>
     <script src="/js/app.js"></script>
 </body>
 </html>

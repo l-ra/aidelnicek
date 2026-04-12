@@ -14,6 +14,20 @@ function appPath(path) {
     return base + p;
 }
 
+/** Fallback redirect path when data-redirect is missing (ISO week from server). */
+function defaultPlanDayRedirectPath() {
+    var cfg = typeof window.AIDELNICEK_PLAN_DAY_DEFAULT === 'object' && window.AIDELNICEK_PLAN_DAY_DEFAULT !== null
+        ? window.AIDELNICEK_PLAN_DAY_DEFAULT
+        : {};
+    var day = parseInt(cfg.day, 10);
+    var week = parseInt(cfg.week, 10);
+    var year = parseInt(cfg.year, 10);
+    if (!day || day < 1 || day > 7 || !week || week < 1 || week > 53 || !year) {
+        return '/plan/day';
+    }
+    return '/plan/day?day=' + day + '&week=' + week + '&year=' + year;
+}
+
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     var s = String(str);
@@ -232,7 +246,7 @@ function initAlternativePicker() {
     document.querySelectorAll('.alt-choose-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var planId      = this.getAttribute('data-plan-id');
-            var redirect    = this.getAttribute('data-redirect') || '/plan/day';
+            var redirect    = this.getAttribute('data-redirect') || defaultPlanDayRedirectPath();
             var card        = this.closest('.meal-card');
             var mealDetail  = this.closest('.meal-detail');
             if (!card && !mealDetail) return;
@@ -327,7 +341,7 @@ function initEatenCheckboxes() {
 function attachEatenHandler(cb) {
     cb.addEventListener('change', function () {
         var planId   = this.getAttribute('data-plan-id');
-        var redirect = this.getAttribute('data-redirect') || '/plan/day';
+        var redirect = this.getAttribute('data-redirect') || defaultPlanDayRedirectPath();
         var optEl    = this.closest('.alt-option');
         var cbEl     = this;
 
@@ -429,7 +443,7 @@ function initSwapDropdown() {
                     var weekId = parseInt(currentCard.getAttribute('data-week-id'), 10);
                     var dayA = parseInt(currentCard.getAttribute('data-current-day'), 10);
                     var mealType = currentCard.getAttribute('data-meal-type');
-                    var redirect = currentCard.getAttribute('data-redirect') || '/plan/day';
+                    var redirect = currentCard.getAttribute('data-redirect') || defaultPlanDayRedirectPath();
 
                     if (!weekId || !mealType || dayA === dayB) return;
 

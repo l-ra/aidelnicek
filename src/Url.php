@@ -73,4 +73,39 @@ final class Url
     {
         return htmlspecialchars(self::u($path), ENT_QUOTES, 'UTF-8');
     }
+
+    /**
+     * Query řetězec pro denní plán (den v týdnu + ISO týden a rok v DB).
+     *
+     * @param array{week_number: int|string, year: int|string} $week
+     */
+    public static function planDayQuery(int $day, array $week): string
+    {
+        return http_build_query([
+            'day'  => $day,
+            'week' => (int) $week['week_number'],
+            'year' => (int) $week['year'],
+        ]);
+    }
+
+    /**
+     * @param array{week_number: int|string, year: int|string} $week
+     */
+    public static function planDayPath(int $day, array $week): string
+    {
+        return '/plan/day?' . self::planDayQuery($day, $week);
+    }
+
+    /**
+     * @param array{week_number: int|string, year: int|string} $week
+     */
+    public static function planDayMealPath(int $day, string $mealType, array $week): string
+    {
+        return '/plan/day/meal?' . http_build_query([
+            'day'       => $day,
+            'meal_type' => $mealType,
+            'week'      => (int) $week['week_number'],
+            'year'      => (int) $week['year'],
+        ]);
+    }
 }

@@ -217,8 +217,24 @@ class MealPlan
         $weekNumber = (int) $dt->format('W');
         $year       = (int) $dt->format('o'); // ISO year — správně ošetřuje přechod roku
 
+        return self::getOrCreateWeekByNumberAndYear($weekNumber, $year);
+    }
+
+    /**
+     * Vrátí řádek týdne z tabulky weeks; při chybě záznamu ho vytvoří (stejně jako navigace na /plan/week).
+     */
+    public static function getOrCreateWeekByNumberAndYear(int $weekNumber, int $year): array
+    {
         $db   = Database::get();
         $stmt = $db->prepare('SELECT * FROM weeks WHERE week_number = ? AND year = ?');
+        $stmt->execute([$weekNumber, $year]);
+        $row = $stmt->fetch();
+
+        if ($row !== false) {
+            return $row;
+        }
+
+        $db->prepare('INSERT OR IGNORE INTO weeks (week_number, year) VALUES (?, ?)')->execute([$weekNumber, $year]);
         $stmt->execute([$weekNumber, $year]);
         $row = $stmt->fetch();
 
@@ -237,19 +253,21 @@ class MealPlan
         $weekNumber = (int) date('W');
         $year       = (int) date('Y');
 
-        $db   = Database::get();
-        $stmt = $db->prepare('SELECT * FROM weeks WHERE week_number = ? AND year = ?');
-        $stmt->execute([$weekNumber, $year]);
-        $row = $stmt->fetch();
+        return self::getOrCreateWeekByNumberAndYear($weekNumber, $year);
+    }
 
-        if ($row !== false) {
-            return $row;
+    /**
+     * Z GET parametrů week/year vybere týden; při neplatných hodnotách vrátí aktuální týden.
+     */
+    public static function resolveWeekFromRequest(?int $weekNumber, ?int $year): array
+    {
+        if ($weekNumber === null || $year === null
+            || $weekNumber < 1 || $weekNumber > 53
+            || $year < 1970 || $year > 2100) {
+            return self::getOrCreateCurrentWeek();
         }
 
-        $db->prepare('INSERT INTO weeks (week_number, year) VALUES (?, ?)')->execute([$weekNumber, $year]);
-        $id = (int) $db->lastInsertId();
-
-        return ['id' => $id, 'week_number' => $weekNumber, 'year' => $year, 'generated_at' => null];
+        return self::getOrCreateWeekByNumberAndYear($weekNumber, $year);
     }
 
     public static function getWeekById(int $weekId): ?array

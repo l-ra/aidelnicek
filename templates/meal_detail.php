@@ -7,9 +7,10 @@ $pageTitle = MealPlan::getMealTypeLabel($mealType) . ' — ' . MealPlan::getDayL
 $householdSelections = $householdSelections ?? [];
 $currentUserName = $currentUser['name'] ?? '';
 
-$backUrl = Url::u('/plan/day?day=' . $day);
-$mealDetailRedirect = Url::u('/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlencode($mealType));
-$weekStart = $weekStart ?? new DateTimeImmutable('monday this week');
+$week = $week ?? MealPlan::getOrCreateCurrentWeek();
+$backUrl = Url::u(Url::planDayPath($day, $week));
+$mealDetailRedirect = Url::u(Url::planDayMealPath($day, $mealType, $week));
+$weekStart = $weekStart ?? (new DateTimeImmutable())->setISODate((int) $week['year'], (int) $week['week_number'], 1);
 
 ob_start();
 ?>
@@ -234,4 +235,5 @@ ob_start();
 
 <?php
 $content = ob_get_clean();
+$planDayJsDefault = ['day' => $day, 'week' => (int) $week['week_number'], 'year' => (int) $week['year']];
 require __DIR__ . '/layout.php';

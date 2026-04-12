@@ -16,11 +16,14 @@ $prevWeekDt = $weekStart->modify('-1 week');
 $nextWeekDt = $weekStart->modify('+1 week');
 
 $prevWeek   = (int) $prevWeekDt->format('W');
-$prevYear   = (int) $prevWeekDt->format('Y');
+$prevYear   = (int) $prevWeekDt->format('o');
 $nextWeek   = (int) $nextWeekDt->format('W');
-$nextYear   = (int) $nextWeekDt->format('Y');
+$nextYear   = (int) $nextWeekDt->format('o');
 
-$isCurrentWeek = ((int) $currentDt->format('W') === $weekNumber && (int) $currentDt->format('Y') === $weekYear);
+$isCurrentWeek = ((int) $currentDt->format('W') === $weekNumber && (int) $currentDt->format('o') === $weekYear);
+
+$todayIso            = $todayIso ?? (int) date('N');
+$currentCalendarWeek = MealPlan::getOrCreateCurrentWeek();
 
 ob_start();
 ?>
@@ -52,7 +55,7 @@ ob_start();
                         $isToday = $isCurrentWeek && $d === $todayIso;
                         ?>
                         <th class="<?= $isToday ? 'today' : '' ?>">
-                            <a href="<?= Url::hu('/plan/day?day=' . $d) ?>" class="week-table__day-link">
+                            <a href="<?= Url::hu(Url::planDayPath($d, $week)) ?>" class="week-table__day-link">
                                 <span class="week-table__day-short"><?= MealPlan::getDayShortLabel($d) ?></span>
                                 <span class="week-table__day-date"><?= $dDate->format('j.n.') ?></span>
                             </a>
@@ -88,7 +91,7 @@ ob_start();
                             ?>
                             <td class="<?= $tdClass ?>">
                                 <?php if ($chosen): ?>
-                                    <a href="<?= Url::hu('/plan/day?day=' . $d) ?>" class="week-table__cell-link <?= $isEaten ? 'is-eaten' : '' ?>">
+                                    <a href="<?= Url::hu(Url::planDayPath($d, $week)) ?>" class="week-table__cell-link <?= $isEaten ? 'is-eaten' : '' ?>">
                                         <?= htmlspecialchars($chosen['meal_name']) ?>
                                         <?php if ($isEaten): ?>
                                             <span class="eaten-mark" title="Snězeno">&#10003;</span>
@@ -106,7 +109,7 @@ ob_start();
     </div>
 
     <div class="week-plan__footer">
-        <a href="<?= Url::hu('/plan/day') ?>" class="btn btn-primary">Dnešní plán</a>
+        <a href="<?= Url::hu(Url::planDayPath($todayIso, $currentCalendarWeek)) ?>" class="btn btn-primary">Dnešní plán</a>
     </div>
 
 </section>
