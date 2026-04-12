@@ -33,7 +33,7 @@ ob_start();
                     <?= date('j. n. Y') ?>
                 </span>
             </h2>
-            <a href="<?= Url::hu('/plan/day') ?>" class="btn btn-primary btn-sm">Otevřít</a>
+            <a href="<?= Url::hu(Url::planDayPath($todayIso, $week)) ?>" class="btn btn-primary btn-sm">Otevřít</a>
         </div>
 
         <ul class="dashboard-meal-list">
@@ -68,7 +68,7 @@ ob_start();
     </div>
 
     <div class="dashboard-actions">
-        <a href="<?= Url::hu('/plan/day') ?>" class="btn btn-primary">Dnešní plán</a>
+        <a href="<?= Url::hu(Url::planDayPath($todayIso, $week)) ?>" class="btn btn-primary">Dnešní plán</a>
         <a href="<?= Url::hu('/plan/week') ?>" class="btn btn-secondary">Týdenní přehled</a>
     </div>
 

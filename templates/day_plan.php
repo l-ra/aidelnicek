@@ -6,7 +6,11 @@ use Aidelnicek\Url;
 $pageTitle = 'Denní jídelníček';
 $csrfToken = Csrf::generate();
 
-$currentRedirect = Url::u('/plan/day?day=' . $day);
+$week = $week ?? [];
+$weekNumber = (int) ($week['week_number'] ?? 0);
+$weekYear   = (int) ($week['year'] ?? 0);
+
+$currentRedirect = Url::u(Url::planDayPath($day, $week));
 $householdSelections = $householdSelections ?? [];
 $weekPlan = $weekPlan ?? [];
 $weekId = $weekId ?? 0;
@@ -15,32 +19,47 @@ $weekId = $weekId ?? 0;
 $prevDay = $day > 1 ? $day - 1 : null;
 $nextDay = $day < 7 ? $day + 1 : null;
 
-// Date for each day of week (Mon–Sun of current week)
-$weekStart = new DateTimeImmutable('monday this week');
+// Date for each day of week (Mon–Sun of selected ISO week)
+$weekStart = (new DateTimeImmutable())->setISODate($weekYear, $weekNumber, 1);
 $dayDate = $weekStart->modify('+' . ($day - 1) . ' days');
+
+$prevWeekDt = $weekStart->modify('-1 week');
+$nextWeekDt = $weekStart->modify('+1 week');
+$prevWeekNav = ['week_number' => (int) $prevWeekDt->format('W'), 'year' => (int) $prevWeekDt->format('o')];
+$nextWeekNav = ['week_number' => (int) $nextWeekDt->format('W'), 'year' => (int) $nextWeekDt->format('o')];
+
+$currentDt         = new DateTimeImmutable();
+$isViewedWeekToday = ((int) $currentDt->format('W') === $weekNumber && (int) $currentDt->format('o') === $weekYear);
+$todayIso          = (int) date('N');
 
 ob_start();
 ?>
 <section class="day-plan">
 
     <nav class="plan-nav" aria-label="Navigace dní">
+        <a href="<?= Url::hu(Url::planDayPath($day, $prevWeekNav)) ?>"
+           class="plan-nav__week-step plan-nav__week-step--prev btn btn-secondary btn-sm"
+           title="Předchozí týden">&larr;</a>
         <div class="plan-nav__days">
             <?php for ($d = 1; $d <= 7; $d++): ?>
                 <?php
                 $dDate    = $weekStart->modify('+' . ($d - 1) . ' days');
                 $isActive = $d === $day;
-                $isToday  = $d === (int) date('N');
+                $isToday  = $isViewedWeekToday && $d === $todayIso;
                 $classes  = 'plan-nav__day';
                 if ($isActive) $classes .= ' is-active';
                 if ($isToday)  $classes .= ' is-today';
                 ?>
-                <a href="<?= Url::hu('/plan/day?day=' . $d) ?>" class="<?= $classes ?>">
+                <a href="<?= Url::hu(Url::planDayPath($d, $week)) ?>" class="<?= $classes ?>">
                     <span class="plan-nav__day-short"><?= MealPlan::getDayShortLabel($d) ?></span>
                     <span class="plan-nav__day-date"><?= $dDate->format('j.n.') ?></span>
                 </a>
             <?php endfor; ?>
         </div>
-        <a href="<?= Url::hu('/plan/week') ?>" class="plan-nav__week-link">Týdenní přehled</a>
+        <a href="<?= Url::hu(Url::planDayPath($day, $nextWeekNav)) ?>"
+           class="plan-nav__week-step plan-nav__week-step--next btn btn-secondary btn-sm"
+           title="Následující týden">&rarr;</a>
+        <a href="<?= Url::hu('/plan/week?week=' . $weekNumber . '&year=' . $weekYear) ?>" class="plan-nav__week-link">Týden <?= $weekNumber ?>/<?= $weekYear ?></a>
     </nav>
 
     <div class="day-plan__header-row">
@@ -71,7 +90,7 @@ ob_start();
             }
             $chosenAlt = $chosenAltNum !== null ? ($chosenAltNum === 1 ? $alt1 : $alt2) : ($alt1 ?? $alt2);
             $otherAlt = ($chosenAltNum === 1 ? $alt2 : $alt1);
-            $mealDetailUrl = Url::u('/plan/day/meal?day=' . (int) $day . '&meal_type=' . urlencode($mealType));
+            $mealDetailUrl = Url::u(Url::planDayMealPath($day, $mealType, $week));
             ?>
             <div class="meal-card meal-card--compact" data-meal-type="<?= htmlspecialchars($mealType) ?>"
                  data-week-id="<?= (int) $weekId ?>"
@@ -276,4 +295,5 @@ ob_start();
 </div>
 <?php
 $content = ob_get_clean();
+$planDayJsDefault = ['day' => $day, 'week' => $weekNumber, 'year' => $weekYear];
 require __DIR__ . '/layout.php';

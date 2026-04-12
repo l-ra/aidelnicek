@@ -75,6 +75,30 @@ class MealRecipe
         ];
     }
 
+    /**
+     * Cesta s tenant prefixem pro návrat na denní plán podle záznamu meal_plans (den + ISO týden).
+     */
+    public static function planDayPathForPlanRow(array $plan): string
+    {
+        $day = (int) ($plan['day_of_week'] ?? 1);
+        $day = max(1, min(7, $day));
+        $weekId = (int) ($plan['week_id'] ?? 0);
+        $week   = $weekId > 0 ? MealPlan::getWeekById($weekId) : null;
+
+        if ($week === null) {
+            return Url::u('/plan/day?day=' . $day);
+        }
+
+        return Url::u(Url::planDayPath($day, $week));
+    }
+
+    public static function planDayBackPathForPlanId(int $userId, int $planId): string
+    {
+        $plan = self::findPlanForUser($userId, $planId);
+
+        return $plan !== null ? self::planDayPathForPlanRow($plan) : Url::u('/plan/day');
+    }
+
     public static function getStatusForPlan(int $userId, int $planId, ?int $jobId = null): ?array
     {
         $plan = self::loadPlanWithProposalLink($userId, $planId);
