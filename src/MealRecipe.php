@@ -76,6 +76,34 @@ class MealRecipe
     }
 
     /**
+     * Vrátí již uložený recept pro veřejné sdílení bez vytváření nových vazeb nebo generování.
+     *
+     * @return array{meal_name: string, recipe_text: string}|null
+     */
+    public static function getRecipeForSharedView(int $userId, int $planId): ?array
+    {
+        $plan = MealPlan::getPlanByIdForUser($userId, $planId);
+        if ($plan === null) {
+            return null;
+        }
+
+        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        if ($proposalMealId <= 0) {
+            return null;
+        }
+
+        $stored = self::getRecipeByProposalMealId($proposalMealId);
+        if ($stored === null) {
+            return null;
+        }
+
+        return [
+            'meal_name'   => (string) ($plan['meal_name'] ?? 'Recept'),
+            'recipe_text' => (string) $stored['recipe_text'],
+        ];
+    }
+
+    /**
      * Cesta s tenant prefixem pro návrat na denní plán podle záznamu meal_plans (den + ISO týden).
      */
     public static function planDayPathForPlanRow(array $plan): string

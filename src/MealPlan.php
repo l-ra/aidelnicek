@@ -315,6 +315,34 @@ class MealPlan
     }
 
     /**
+     * @param array{alt1:mixed,alt2:mixed} $slot
+     */
+    public static function getChosenAlternative(array $slot): ?array
+    {
+        foreach (['alt1', 'alt2'] as $key) {
+            $candidate = $slot[$key] ?? null;
+            if ($candidate !== null && (int) ($candidate['is_chosen'] ?? 0) === 1) {
+                return $candidate;
+            }
+        }
+
+        $fallback = $slot['alt1'] ?? $slot['alt2'] ?? null;
+        return is_array($fallback) ? $fallback : null;
+    }
+
+    public static function getChosenDayPlan(int $userId, int $weekId, int $dayOfWeek): array
+    {
+        $dayPlan = self::getDayPlan($userId, $weekId, $dayOfWeek);
+        $chosen  = [];
+
+        foreach (self::MEAL_TYPE_ORDER as $mealType) {
+            $chosen[$mealType] = self::getChosenAlternative($dayPlan[$mealType] ?? ['alt1' => null, 'alt2' => null]);
+        }
+
+        return $chosen;
+    }
+
+    /**
      * Zajistí, že každý slot (den + typ jídla) má přesně jednu zvolenou alternativu.
      * Pokud je stav nevalidní (0 nebo více zvolených), nastaví se výchozí alternativa 1.
      */
@@ -480,7 +508,18 @@ class MealPlan
     public static function getWeekPlan(int $userId, int $weekId): array
     {
         $stmt = Database::get()->prepare(
-            'SELECT * FROM meal_plans
+            'SELECT mp.*,
+                    CASE
+                        WHEN mp.proposal_meal_id IS NOT NULL
+                             AND EXISTS (
+                                SELECT 1
+                                FROM meal_recipes mr
+                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                             )
+                        THEN 1
+                        ELSE 0
+                    END AS has_recipe
+             FROM meal_plans mp
              WHERE user_id = ? AND week_id = ?
              ORDER BY day_of_week ASC, alternative ASC'
         );
@@ -504,6 +543,47 @@ class MealPlan
         }
 
         return $plan;
+    }
+
+    public static function getChosenWeekPlan(int $userId, int $weekId): array
+    {
+        $weekPlan = self::getWeekPlan($userId, $weekId);
+        $chosen   = [];
+
+        for ($day = 1; $day <= 7; $day++) {
+            $chosen[$day] = [];
+            foreach (self::MEAL_TYPE_ORDER as $mealType) {
+                $chosen[$day][$mealType] = self::getChosenAlternative(
+                    $weekPlan[$day][$mealType] ?? ['alt1' => null, 'alt2' => null]
+                );
+            }
+        }
+
+        return $chosen;
+    }
+
+    public static function getPlanByIdForUser(int $userId, int $planId): ?array
+    {
+        $stmt = Database::get()->prepare(
+            'SELECT mp.*,
+                    CASE
+                        WHEN mp.proposal_meal_id IS NOT NULL
+                             AND EXISTS (
+                                SELECT 1
+                                FROM meal_recipes mr
+                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                             )
+                        THEN 1
+                        ELSE 0
+                    END AS has_recipe
+             FROM meal_plans mp
+             WHERE mp.id = ? AND mp.user_id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$planId, $userId]);
+        $row = $stmt->fetch();
+
+        return $row !== false ? $row : null;
     }
 
     public static function chooseAlternative(int $userId, int $planId): bool

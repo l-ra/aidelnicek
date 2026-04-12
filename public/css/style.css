@@ -452,6 +452,14 @@ body {
     margin-bottom: 1rem;
 }
 
+.plan-share-actions,
+.plan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 /* ── Meal cards ───────────────────────────────────────────────────────────── */
 .meal-cards {
     display: flex;
@@ -905,6 +913,96 @@ body {
     padding: 1rem;
     background: #f8f9fa;
     border-radius: var(--radius);
+}
+
+.is-shared-page .site-header .container {
+    align-items: center;
+}
+
+.shared-page-badge {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.18);
+    color: var(--color-white);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.shared-plan {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.shared-plan__hero {
+    background: var(--color-white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.shared-plan__eyebrow {
+    margin: 0 0 0.4rem;
+    color: var(--color-primary);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.shared-plan__meta,
+.shared-plan__expires {
+    margin: 0.35rem 0 0;
+    color: var(--color-text-muted);
+}
+
+.shared-plan__separator {
+    margin: 0 0.4rem;
+}
+
+.shared-plan__actions,
+.shared-plan__footer {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.meal-card--shared .meal-card__shared-body {
+    padding: 1rem;
+}
+
+.meal-card__shared-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+    color: var(--color-primary-dark);
+}
+
+.week-table--shared .week-table__cell-link--shared {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.week-table__recipe-link {
+    color: var(--color-primary);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.week-table__recipe-link:hover {
+    text-decoration: underline;
 }
 
 /* ── Eaten checkbox ───────────────────────────────────────────────────────── */

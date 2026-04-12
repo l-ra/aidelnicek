@@ -822,13 +822,15 @@ function initShoppingRemove() {
 }
 
 /**
- * Handles the "Kopírovat odkaz ke stažení" button.
- * Copies the signed CSV export URL to clipboard.
+ * Handles buttons that copy a signed/public link to clipboard.
  */
 function initShoppingCopySignedLink() {
     document.querySelectorAll('.js-copy-signed-link').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            var url = this.getAttribute('data-url-csv') || '';
+            var url = this.getAttribute('data-copy-url')
+                || this.getAttribute('data-url-csv')
+                || this.getAttribute('data-url-json')
+                || '';
             if (!url) { return; }
 
             if (navigator.clipboard && navigator.clipboard.writeText) {
