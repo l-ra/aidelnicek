@@ -16,6 +16,7 @@ use Aidelnicek\MealGenerator;
 use Aidelnicek\MealHistory;
 use Aidelnicek\MealPlan;
 use Aidelnicek\MealRecipe;
+use Aidelnicek\PlanShare;
 use Aidelnicek\GenerationJobService;
 use Aidelnicek\Router;
 use Aidelnicek\ShoppingList;
@@ -997,6 +998,112 @@ $router->get('/plan', function () {
     exit;
 });
 
+$router->get('/share/plan', function () use ($projectRoot) {
+    $token = trim($_GET['token'] ?? '');
+    $share = PlanShare::validateShareToken($token);
+
+    if ($share === null || !in_array($share['scope'], ['week', 'day'], true)) {
+        http_response_code(403);
+        $pageTitle = 'Sdílený jídelníček';
+        $content   = '<section class="error-page"><h1>Odkaz už není platný</h1><p>Odkaz pro sdílení jídelníčku je neplatný nebo vypršel.</p></section>';
+        $sharedPage = true;
+        require $projectRoot . '/templates/layout.php';
+        exit;
+    }
+
+    $userId = (int) $share['user_id'];
+    $weekId = (int) ($share['week_id'] ?? 0);
+    $week   = MealPlan::getWeekById($weekId);
+    if ($week === null || !MealPlan::hasPlansForWeek($userId, $weekId)) {
+        http_response_code(404);
+        $pageTitle = 'Sdílený jídelníček';
+        $content   = '<section class="error-page"><h1>Jídelníček nenalezen</h1><p>Požadovaný sdílený jídelníček nebyl nalezen.</p></section>';
+        $sharedPage = true;
+        require $projectRoot . '/templates/layout.php';
+        exit;
+    }
+
+    MealPlan::ensureSingleChosenPerSlot($userId, $weekId);
+
+    $shareExpiresAt = (int) $share['expires'];
+    $shareExpiresLabel = date('j. n. Y H:i', $shareExpiresAt);
+    if ($share['scope'] === 'day') {
+        $sharedWeekUrl = PlanShare::getSignedPlanUrl(
+            $userId,
+            $weekId,
+            null,
+            PlanShare::getDefaultValidityHours(),
+            $shareExpiresAt
+        );
+        $day      = (int) ($share['day'] ?? 1);
+        $dayPlan  = MealPlan::getChosenDayPlan($userId, $weekId, $day);
+        $pageTitle = 'Sdílený denní jídelníček';
+        $sharedPage = true;
+        require $projectRoot . '/templates/shared_day_plan.php';
+        exit;
+    }
+
+    $weekPlan    = MealPlan::getChosenWeekPlan($userId, $weekId);
+    $pageTitle   = 'Sdílený týdenní jídelníček';
+    $sharedPage  = true;
+    require $projectRoot . '/templates/shared_week_plan.php';
+    exit;
+});
+
+$router->get('/share/recipe', function () use ($projectRoot) {
+    $token = trim($_GET['token'] ?? '');
+    $share = PlanShare::validateShareToken($token);
+
+    if ($share === null || $share['scope'] !== 'recipe') {
+        http_response_code(403);
+        $pageTitle = 'Sdílený recept';
+        $content   = '<section class="error-page"><h1>Odkaz už není platný</h1><p>Odkaz pro sdílení receptu je neplatný nebo vypršel.</p></section>';
+        $sharedPage = true;
+        require $projectRoot . '/templates/layout.php';
+        exit;
+    }
+
+    $userId = (int) $share['user_id'];
+    $planId = (int) ($share['plan_id'] ?? 0);
+    $weekId = (int) ($share['week_id'] ?? 0);
+    $day    = (int) ($share['day'] ?? 1);
+
+    $plan = MealPlan::getPlanByIdForUser($userId, $planId);
+    if ($plan === null || (int) ($plan['week_id'] ?? 0) !== $weekId || (int) ($plan['day_of_week'] ?? 0) !== $day) {
+        http_response_code(404);
+        $pageTitle = 'Sdílený recept';
+        $content   = '<section class="error-page"><h1>Recept nenalezen</h1><p>Požadovaný sdílený recept nebyl nalezen.</p></section>';
+        $sharedPage = true;
+        require $projectRoot . '/templates/layout.php';
+        exit;
+    }
+
+    $recipe = MealRecipe::getRecipeForSharedView($userId, $planId);
+    if ($recipe === null) {
+        http_response_code(404);
+        $pageTitle = 'Sdílený recept';
+        $content   = '<section class="error-page"><h1>Recept nenalezen</h1><p>Recept pro toto jídlo zatím není k dispozici.</p></section>';
+        $sharedPage = true;
+        require $projectRoot . '/templates/layout.php';
+        exit;
+    }
+
+    $week = MealPlan::getWeekById($weekId);
+    $shareExpiresAt = (int) $share['expires'];
+    $sharedPlanBackUrl = $week !== null
+        ? PlanShare::getSignedPlanUrl($userId, $weekId, $day, PlanShare::getDefaultValidityHours(), $shareExpiresAt)
+        : Url::u('/share/plan?token=' . urlencode($token));
+
+    $pageTitle = (string) $recipe['meal_name'];
+    $recipeBackUrl = $sharedPlanBackUrl;
+    $sharedPage = true;
+    ob_start();
+    require $projectRoot . '/templates/recipe_view.php';
+    $content = ob_get_clean();
+    require $projectRoot . '/templates/layout.php';
+    exit;
+});
+
 $router->get('/plan/day', function () use ($projectRoot) {
     $user   = Auth::requireLogin();
     $userId = (int) $user['id'];
@@ -1026,6 +1133,8 @@ $router->get('/plan/day', function () use ($projectRoot) {
     $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
     $householdSelections = MealPlan::getHouseholdSelectionsForDay($userId, $weekId, $day);
 
+    $shareSignedUrl = PlanShare::toAbsoluteUrl(PlanShare::getSignedPlanUrl($userId, $weekId, $day));
+    $shareValidityHours = PlanShare::getDefaultValidityHours();
     $currentUser = $user;
     require $projectRoot . '/templates/day_plan.php';
 });
@@ -1151,6 +1260,8 @@ $router->get('/plan/week', function () use ($projectRoot) {
     MealPlan::ensureSingleChosenPerSlot($userId, $weekId);
     $weekPlan = MealPlan::getWeekPlan($userId, $weekId);
     $todayIso = (int) date('N');
+    $shareSignedUrl = PlanShare::toAbsoluteUrl(PlanShare::getSignedPlanUrl($userId, $weekId));
+    $shareValidityHours = PlanShare::getDefaultValidityHours();
 
     require $projectRoot . '/templates/week_plan.php';
 });

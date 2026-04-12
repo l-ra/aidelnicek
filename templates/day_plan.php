@@ -67,9 +67,19 @@ ob_start();
             <?= htmlspecialchars(MealPlan::getDayLabel($day)) ?>
             <span class="plan-heading__date"><?= $dayDate->format('j. n. Y') ?></span>
         </h1>
-        <button type="button" class="btn btn-secondary btn-sm js-expand-all-variants" id="expand-all-variants-btn" hidden aria-label="Rozbalit všechny skryté varianty">
-            Rozbalit všechny varianty
-        </button>
+        <div class="plan-share-actions">
+            <?php if (!empty($shareSignedUrl ?? '')): ?>
+                <button type="button"
+                        class="btn btn-secondary btn-sm js-copy-signed-link"
+                        data-copy-url="<?= htmlspecialchars($shareSignedUrl) ?>"
+                        title="Veřejný odkaz platný <?= (int) ($shareValidityHours ?? 0) ?> hodin">
+                    Sdílet denní jídelníček
+                </button>
+            <?php endif; ?>
+            <button type="button" class="btn btn-secondary btn-sm js-expand-all-variants" id="expand-all-variants-btn" hidden aria-label="Rozbalit všechny skryté varianty">
+                Rozbalit všechny varianty
+            </button>
+        </div>
     </div>
 
     <div class="meal-cards meal-cards--compact">

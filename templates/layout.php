@@ -2,7 +2,8 @@
 if (!isset($pageTitle)) {
     $pageTitle = 'Aidelnicek';
 }
-$currentUser = \Aidelnicek\Auth::getCurrentUser();
+$sharedPage  = !empty($sharedPage);
+$currentUser = $sharedPage ? null : \Aidelnicek\Auth::getCurrentUser();
 $u = static fn (string $path): string => htmlspecialchars(\Aidelnicek\Url::u($path));
 ?>
 <!DOCTYPE html>
@@ -12,13 +13,15 @@ $u = static fn (string $path): string => htmlspecialchars(\Aidelnicek\Url::u($pa
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?> — Aidelnicek</title>
     <link rel="stylesheet" href="/css/style.css">
+    <?php if (!$sharedPage): ?>
     <meta name="csrf-token" content="<?= htmlspecialchars(\Aidelnicek\Csrf::generate()) ?>">
+    <?php endif; ?>
 </head>
-<body data-base-path="<?php
+<body class="<?= $sharedPage ? 'is-shared-page' : '' ?>" data-base-path="<?php
 $__ts = \Aidelnicek\TenantContext::slug();
 echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
 ?>">
-    <?php if ($currentUser && ($__ts = \Aidelnicek\TenantContext::slug()) !== null && $__ts !== ''): ?>
+    <?php if (!$sharedPage && $currentUser && ($__ts = \Aidelnicek\TenantContext::slug()) !== null && $__ts !== ''): ?>
     <script>
     try { localStorage.setItem('aidelnicek_tenant', <?= json_encode($__ts, JSON_UNESCAPED_UNICODE) ?>); } catch (e) {}
     </script>
@@ -26,6 +29,9 @@ echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
     <header class="site-header">
         <div class="container">
             <a href="<?= $u('/') ?>" class="logo">Aidelnicek</a>
+            <?php if ($sharedPage): ?>
+            <div class="shared-page-badge">Veřejné sdílení</div>
+            <?php else: ?>
             <button class="nav-toggle" aria-label="Otevřít menu" aria-expanded="false" aria-controls="main-nav">
                 <span class="nav-toggle__bar"></span>
                 <span class="nav-toggle__bar"></span>
@@ -60,6 +66,7 @@ echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
                     <a href="<?= $u('/login') ?>">Přihlásit</a>
                 <?php endif; ?>
             </nav>
+            <?php endif; ?>
         </div>
     </header>
     <main class="site-main">
@@ -78,6 +85,7 @@ echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
             <?php endif; ?>
         </div>
     </footer>
+    <?php if (!$sharedPage): ?>
     <script>window.AIDELNICEK_BASE_PATH = <?= json_encode(\Aidelnicek\Url::basePath(), JSON_UNESCAPED_SLASHES) ?>;</script>
     <?php if (!empty($planDayJsDefault) && is_array($planDayJsDefault)): ?>
     <script>window.AIDELNICEK_PLAN_DAY_DEFAULT = <?= json_encode([
@@ -87,5 +95,6 @@ echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
     ], JSON_UNESCAPED_UNICODE) ?>;</script>
     <?php endif; ?>
     <script src="/js/app.js"></script>
+    <?php endif; ?>
 </body>
 </html>
