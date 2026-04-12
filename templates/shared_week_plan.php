@@ -12,6 +12,20 @@ $sharedWeekUrl = $sharedWeekUrl ?? '';
 
 $weekStart = (new DateTimeImmutable())->setISODate($weekYear, $weekNumber, 1);
 
+$shareUserId   = (int) ($share['user_id'] ?? 0);
+$shareWeekId   = (int) ($week['id'] ?? 0);
+$shareExpires  = (int) ($share['expires'] ?? 0);
+$sharedDayUrls = [];
+for ($__d = 1; $__d <= 7; $__d++) {
+    $sharedDayUrls[$__d] = PlanShare::getSignedPlanUrl(
+        $shareUserId,
+        $shareWeekId,
+        $__d,
+        PlanShare::getDefaultValidityHours(),
+        $shareExpires
+    );
+}
+
 ob_start();
 ?>
 <section class="shared-plan">
@@ -32,10 +46,10 @@ ob_start();
                     <?php for ($d = 1; $d <= 7; $d++): ?>
                         <?php $dDate = $weekStart->modify('+' . ($d - 1) . ' days'); ?>
                         <th>
-                            <span class="week-table__day-link">
+                            <a href="<?= htmlspecialchars($sharedDayUrls[$d] ?? '#') ?>" class="week-table__day-link">
                                 <span class="week-table__day-short"><?= MealPlan::getDayShortLabel($d) ?></span>
                                 <span class="week-table__day-date"><?= $dDate->format('j.n.') ?></span>
-                            </span>
+                            </a>
                         </th>
                     <?php endfor; ?>
                 </tr>
@@ -50,11 +64,13 @@ ob_start();
                             <?php $chosen = $weekPlan[$d][$mealType] ?? null; ?>
                             <td>
                                 <?php if (is_array($chosen)): ?>
-                                    <div class="week-table__cell-link week-table__cell-link--shared">
-                                        <span><?= htmlspecialchars((string) ($chosen['meal_name'] ?? '')) ?></span>
+                                    <div class="week-table__cell-link--shared">
+                                        <a href="<?= htmlspecialchars($sharedDayUrls[$d] ?? '#') ?>" class="week-table__cell-link">
+                                            <?= htmlspecialchars((string) ($chosen['meal_name'] ?? '')) ?>
+                                        </a>
                                         <?php if ((int) ($chosen['has_recipe'] ?? 0) === 1): ?>
                                             <a
-                                                href="<?= htmlspecialchars(PlanShare::getSignedRecipeUrl((int) $share['user_id'], (int) $chosen['id'], (int) $week['id'], $d, PlanShare::getDefaultValidityHours(), (int) ($share['expires'] ?? 0))) ?>"
+                                                href="<?= htmlspecialchars(PlanShare::getSignedRecipeUrl($shareUserId, (int) $chosen['id'], $shareWeekId, $d, PlanShare::getDefaultValidityHours(), $shareExpires)) ?>"
                                                 class="week-table__recipe-link"
                                             >
                                                 Recept
