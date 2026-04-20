@@ -418,7 +418,7 @@ class MealGenerator
           "alt2": {"name": "Název jídla", "description": "Krátký popis", "ingredients": [...]}
         },
         "snack_am": {"alt1": {...}, "alt2": {...}},
-        "lunch":    {"alt1": {...}, "alt2": {...}},
+        "lunch":    {"alt1": {"name": "Název jídla", "description": "Krátký popis", "ingredients": [...], "same_meal_as_previous_dinner": false}, "alt2": {"name": "Název jídla", "description": "Krátký popis", "ingredients": [...], "same_meal_as_previous_dinner": false}},
         "snack_pm": {"alt1": {...}, "alt2": {...}},
         "dinner":   {"alt1": {...}, "alt2": {...}}
       }

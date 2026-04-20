@@ -8,6 +8,17 @@ class MealRecipe
 {
     private const PROMPTS_DIR = __DIR__ . '/../prompts';
 
+    private static function getRecipeProposalMealId(array $plan): int
+    {
+        $canonical = isset($plan['recipe_proposal_meal_id']) ? (int) $plan['recipe_proposal_meal_id'] : 0;
+        if ($canonical <= 0) {
+            $canonical = isset($plan['canonical_proposal_meal_id']) ? (int) $plan['canonical_proposal_meal_id'] : 0;
+        }
+
+        return $canonical > 0 ? $canonical : (int) ($plan['proposal_meal_id'] ?? 0);
+    }
+
+
     public static function startOrFetchForPlan(int $userId, int $planId): ?array
     {
         $plan = self::loadPlanWithProposalLink($userId, $planId);
@@ -15,7 +26,7 @@ class MealRecipe
             return null;
         }
 
-        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        $proposalMealId = self::getRecipeProposalMealId($plan);
         if ($proposalMealId <= 0) {
             return ['status' => 'error', 'error' => 'Neplatný návrh jídla pro recept.'];
         }
@@ -58,7 +69,7 @@ class MealRecipe
             return null;
         }
 
-        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        $proposalMealId = self::getRecipeProposalMealId($plan);
         if ($proposalMealId <= 0) {
             return null;
         }
@@ -87,7 +98,7 @@ class MealRecipe
             return null;
         }
 
-        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        $proposalMealId = self::getRecipeProposalMealId($plan);
         if ($proposalMealId <= 0) {
             return null;
         }
@@ -134,7 +145,7 @@ class MealRecipe
             return null;
         }
 
-        $proposalMealId = (int) ($plan['proposal_meal_id'] ?? 0);
+        $proposalMealId = self::getRecipeProposalMealId($plan);
         if ($proposalMealId <= 0) {
             return ['status' => 'error', 'error' => 'Neplatný návrh jídla pro recept.'];
         }
@@ -284,12 +295,17 @@ class MealRecipe
     {
         $stmt = Database::get()->prepare(
             'SELECT mp.*,
+                    COALESCE(mp.canonical_proposal_meal_id, mp.proposal_meal_id) AS recipe_proposal_meal_id,
                     lpm.proposal_id,
                     lpm.meal_name AS proposal_meal_name,
                     lpm.description AS proposal_description,
-                    lpm.ingredients AS proposal_ingredients
+                    lpm.ingredients AS proposal_ingredients,
+                    cpm.meal_name AS canonical_meal_name,
+                    cpm.description AS canonical_description,
+                    cpm.ingredients AS canonical_ingredients
              FROM meal_plans mp
              LEFT JOIN llm_proposal_meals lpm ON lpm.id = mp.proposal_meal_id
+             LEFT JOIN llm_proposal_meals cpm ON cpm.id = COALESCE(mp.canonical_proposal_meal_id, mp.proposal_meal_id)
              WHERE mp.id = ? AND mp.user_id = ?
              LIMIT 1'
         );
@@ -300,7 +316,7 @@ class MealRecipe
 
     private static function ensureProposalMealLink(array $plan, int $userId): int
     {
-        $existing = isset($plan['proposal_meal_id']) ? (int) $plan['proposal_meal_id'] : 0;
+        $existing = self::getRecipeProposalMealId($plan);
         if ($existing > 0) {
             return $existing;
         }
@@ -323,8 +339,11 @@ class MealRecipe
 
             $mealStmt = $db->prepare(
                 'INSERT INTO llm_proposal_meals
-                    (proposal_id, day_of_week, meal_type, alternative, meal_name, description, ingredients)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)'
+                    (proposal_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, canonical_proposal_meal_id, pairing_key)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)'
+            );
+            $canonicalStmt = $db->prepare(
+                'UPDATE llm_proposal_meals SET canonical_proposal_meal_id = ? WHERE id = ?'
             );
             $mealStmt->execute([
                 $proposalId,
@@ -336,13 +355,16 @@ class MealRecipe
                 $ingredientsJson,
             ]);
             $proposalMealId = (int) $db->lastInsertId();
+            $canonicalStmt->execute([$proposalMealId, $proposalMealId]);
 
             $updateStmt = $db->prepare(
                 'UPDATE meal_plans
-                 SET proposal_meal_id = ?, portion_factor = COALESCE(NULLIF(portion_factor, 0), 1.0)
+                 SET proposal_meal_id = ?,
+                     canonical_proposal_meal_id = ?,
+                     portion_factor = COALESCE(NULLIF(portion_factor, 0), 1.0)
                  WHERE id = ?'
             );
-            $updateStmt->execute([$proposalMealId, (int) $plan['id']]);
+            $updateStmt->execute([$proposalMealId, $proposalMealId, (int) $plan['id']]);
 
             $db->commit();
             return $proposalMealId;
@@ -384,7 +406,7 @@ class MealRecipe
         $stmt = Database::get()->prepare(
             'SELECT COUNT(DISTINCT user_id)
              FROM meal_plans
-             WHERE proposal_meal_id = ?'
+             WHERE COALESCE(canonical_proposal_meal_id, proposal_meal_id) = ?'
         );
         $stmt->execute([$proposalMealId]);
         return (int) $stmt->fetchColumn();
@@ -446,7 +468,7 @@ class MealRecipe
             'max_completion_tokens' => LlmEnv::maxCompletionTokens(),
             'input_payload' => [
                 'plan_id' => isset($plan['id']) ? (int) $plan['id'] : null,
-                'proposal_meal_id' => isset($plan['proposal_meal_id']) ? (int) $plan['proposal_meal_id'] : null,
+                'proposal_meal_id' => self::getRecipeProposalMealId($plan),
             ],
         ]);
     }
@@ -478,7 +500,7 @@ class MealRecipe
             'max_completion_tokens' => LlmEnv::maxCompletionTokens(),
             'input_payload' => [
                 'plan_id' => isset($plan['id']) ? (int) $plan['id'] : null,
-                'proposal_meal_id' => isset($plan['proposal_meal_id']) ? (int) $plan['proposal_meal_id'] : null,
+                'proposal_meal_id' => self::getRecipeProposalMealId($plan),
             ],
         ]);
 
@@ -523,9 +545,9 @@ class MealRecipe
                 . "Ingredience:\n{INGREDIENTS}\n";
         }
 
-        $mealName = (string) ($plan['proposal_meal_name'] ?? $plan['meal_name'] ?? 'Jídlo');
-        $mealDesc = (string) ($plan['proposal_description'] ?? $plan['description'] ?? '');
-        $ingredientsJson = (string) ($plan['proposal_ingredients'] ?? $plan['ingredients'] ?? '[]');
+        $mealName = (string) ($plan['canonical_meal_name'] ?? $plan['proposal_meal_name'] ?? $plan['meal_name'] ?? 'Jídlo');
+        $mealDesc = (string) ($plan['canonical_description'] ?? $plan['proposal_description'] ?? $plan['description'] ?? '');
+        $ingredientsJson = (string) ($plan['canonical_ingredients'] ?? $plan['proposal_ingredients'] ?? $plan['ingredients'] ?? '[]');
 
         $userPrompt = strtr($userTemplate, [
             '{MEAL_NAME}'        => $mealName,

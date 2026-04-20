@@ -287,7 +287,7 @@ class MealPlan
                              AND EXISTS (
                                 SELECT 1
                                 FROM meal_recipes mr
-                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                                WHERE mr.proposal_meal_id = COALESCE(mp.canonical_proposal_meal_id, mp.proposal_meal_id)
                              )
                         THEN 1
                         ELSE 0
@@ -328,6 +328,207 @@ class MealPlan
 
         $fallback = $slot['alt1'] ?? $slot['alt2'] ?? null;
         return is_array($fallback) ? $fallback : null;
+    }
+
+    private static function normalizePairingKey(mixed $value): ?string
+    {
+        $pairingKey = trim((string) $value);
+        return $pairingKey !== '' ? $pairingKey : null;
+    }
+
+    /**
+     * @param array<int, mixed> $weekPlan
+     * @return array{requested_day:int,requested_meal_type:string,anchor_day:int,is_paired:bool,pairing_key:?string,slots:array<int,array{day:int,meal_type:string,row:?array}>}
+     */
+    public static function getSwapGroupInfo(array $weekPlan, int $dayOfWeek, string $mealType): array
+    {
+        $empty = [
+            'requested_day' => $dayOfWeek,
+            'requested_meal_type' => $mealType,
+            'anchor_day' => $dayOfWeek,
+            'is_paired' => false,
+            'pairing_key' => null,
+            'slots' => [],
+        ];
+
+        if ($dayOfWeek < 1 || $dayOfWeek > 7 || !in_array($mealType, self::MEAL_TYPE_ORDER, true)) {
+            return $empty;
+        }
+
+        $slot = $weekPlan[$dayOfWeek][$mealType] ?? ['alt1' => null, 'alt2' => null];
+        $currentRow = self::getChosenAlternative($slot);
+        if ($currentRow === null) {
+            return $empty;
+        }
+
+        $pairingKey = self::normalizePairingKey($currentRow['pairing_key'] ?? null);
+        if ($pairingKey !== null && $mealType === 'dinner' && $dayOfWeek < 7) {
+            $linkedSlot = $weekPlan[$dayOfWeek + 1]['lunch'] ?? ['alt1' => null, 'alt2' => null];
+            $linkedRow = self::getChosenAlternative($linkedSlot);
+            if ($linkedRow !== null && self::normalizePairingKey($linkedRow['pairing_key'] ?? null) === $pairingKey) {
+                return [
+                    'requested_day' => $dayOfWeek,
+                    'requested_meal_type' => $mealType,
+                    'anchor_day' => $dayOfWeek,
+                    'is_paired' => true,
+                    'pairing_key' => $pairingKey,
+                    'slots' => [
+                        ['day' => $dayOfWeek, 'meal_type' => 'dinner', 'row' => $currentRow],
+                        ['day' => $dayOfWeek + 1, 'meal_type' => 'lunch', 'row' => $linkedRow],
+                    ],
+                ];
+            }
+        }
+
+        if ($pairingKey !== null && $mealType === 'lunch' && $dayOfWeek > 1) {
+            $linkedSlot = $weekPlan[$dayOfWeek - 1]['dinner'] ?? ['alt1' => null, 'alt2' => null];
+            $linkedRow = self::getChosenAlternative($linkedSlot);
+            if ($linkedRow !== null && self::normalizePairingKey($linkedRow['pairing_key'] ?? null) === $pairingKey) {
+                return [
+                    'requested_day' => $dayOfWeek,
+                    'requested_meal_type' => $mealType,
+                    'anchor_day' => $dayOfWeek - 1,
+                    'is_paired' => true,
+                    'pairing_key' => $pairingKey,
+                    'slots' => [
+                        ['day' => $dayOfWeek - 1, 'meal_type' => 'dinner', 'row' => $linkedRow],
+                        ['day' => $dayOfWeek, 'meal_type' => 'lunch', 'row' => $currentRow],
+                    ],
+                ];
+            }
+        }
+
+        return [
+            'requested_day' => $dayOfWeek,
+            'requested_meal_type' => $mealType,
+            'anchor_day' => $dayOfWeek,
+            'is_paired' => false,
+            'pairing_key' => null,
+            'slots' => [
+                ['day' => $dayOfWeek, 'meal_type' => $mealType, 'row' => $currentRow],
+            ],
+        ];
+    }
+
+    /**
+     * @param array{requested_day:int,requested_meal_type:string,anchor_day:int,is_paired:bool,pairing_key:?string,slots:array<int,array{day:int,meal_type:string,row:?array}>} $group
+     */
+    public static function getSwapGroupLabel(array $group): string
+    {
+        if (($group['is_paired'] ?? false) !== true || count($group['slots'] ?? []) < 2) {
+            $day = (int) ($group['requested_day'] ?? 0);
+            return self::getDayLabel($day);
+        }
+
+        $dinnerDay = null;
+        $lunchDay = null;
+        foreach (($group['slots'] ?? []) as $slot) {
+            if (($slot['meal_type'] ?? '') === 'dinner') {
+                $dinnerDay = (int) ($slot['day'] ?? 0);
+            } elseif (($slot['meal_type'] ?? '') === 'lunch') {
+                $lunchDay = (int) ($slot['day'] ?? 0);
+            }
+        }
+
+        if ($dinnerDay === null || $lunchDay === null) {
+            $day = (int) ($group['requested_day'] ?? 0);
+            return self::getDayLabel($day);
+        }
+
+        return self::getMealTypeLabel('dinner') . ' ' . self::getDayShortLabel($dinnerDay)
+            . ' + ' . mb_strtolower(self::getMealTypeLabel('lunch')) . ' ' . self::getDayShortLabel($lunchDay);
+    }
+
+    /**
+     * @param array{requested_day:int,requested_meal_type:string,anchor_day:int,is_paired:bool,pairing_key:?string,slots:array<int,array{day:int,meal_type:string,row:?array}>} $groupA
+     * @param array{requested_day:int,requested_meal_type:string,anchor_day:int,is_paired:bool,pairing_key:?string,slots:array<int,array{day:int,meal_type:string,row:?array}>} $groupB
+     */
+    public static function areSwapGroupsCompatible(array $groupA, array $groupB): bool
+    {
+        $slotsA = $groupA['slots'] ?? [];
+        $slotsB = $groupB['slots'] ?? [];
+        if (count($slotsA) === 0 || count($slotsA) !== count($slotsB)) {
+            return false;
+        }
+
+        foreach ($slotsA as $index => $slotA) {
+            $slotB = $slotsB[$index] ?? null;
+            if (!is_array($slotB) || ($slotA['meal_type'] ?? null) !== ($slotB['meal_type'] ?? null)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<int, mixed> $weekPlan
+     * @return array<int, array<string, mixed>>
+     */
+    public static function getSwapOptionsForWeekPlan(array $weekPlan, int $dayOfWeek, string $mealType): array
+    {
+        $sourceGroup = self::getSwapGroupInfo($weekPlan, $dayOfWeek, $mealType);
+        if (empty($sourceGroup['slots'])) {
+            return [];
+        }
+
+        $options = [];
+        for ($candidateDay = 1; $candidateDay <= 7; $candidateDay++) {
+            if ($candidateDay === $dayOfWeek) {
+                continue;
+            }
+
+            $candidateGroup = self::getSwapGroupInfo($weekPlan, $candidateDay, $mealType);
+            if (empty($candidateGroup['slots']) || !self::areSwapGroupsCompatible($sourceGroup, $candidateGroup)) {
+                continue;
+            }
+
+            $primaryRow = self::getChosenAlternative($weekPlan[$candidateDay][$mealType] ?? ['alt1' => null, 'alt2' => null]);
+            if ($primaryRow === null) {
+                continue;
+            }
+
+            $linkedSlot = null;
+            foreach ($candidateGroup['slots'] as $slot) {
+                if ((int) ($slot['day'] ?? 0) === $candidateDay && ($slot['meal_type'] ?? '') === $mealType) {
+                    continue;
+                }
+                $linkedSlot = $slot;
+                break;
+            }
+
+            $linkedRow = is_array($linkedSlot['row'] ?? null) ? $linkedSlot['row'] : null;
+            $options[] = [
+                'day' => $candidateDay,
+                'dayLabel' => self::getDayShortLabel($candidateDay),
+                'dayFullLabel' => self::getDayLabel($candidateDay),
+                'mealName' => $primaryRow['meal_name'] ?? '—',
+                'description' => $primaryRow['description'] ?? '',
+                'ingredients' => self::decodeIngredients($primaryRow['ingredients'] ?? null),
+                'isPaired' => (bool) ($candidateGroup['is_paired'] ?? false),
+                'pairLabel' => self::getSwapGroupLabel($candidateGroup),
+                'pairedMealTypeLabel' => $linkedSlot !== null ? self::getMealTypeLabel((string) ($linkedSlot['meal_type'] ?? '')) : '',
+                'pairedDayLabel' => $linkedSlot !== null ? self::getDayShortLabel((int) ($linkedSlot['day'] ?? 0)) : '',
+                'pairedMealName' => $linkedRow['meal_name'] ?? '',
+                'pairedDescription' => $linkedRow['description'] ?? '',
+                'pairedIngredients' => self::decodeIngredients($linkedRow['ingredients'] ?? null),
+            ];
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    private static function decodeIngredients(mixed $rawIngredients): array
+    {
+        if (!is_string($rawIngredients) || trim($rawIngredients) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($rawIngredients, true);
+        return is_array($decoded) ? $decoded : [];
     }
 
     public static function getChosenDayPlan(int $userId, int $weekId, int $dayOfWeek): array
@@ -458,7 +659,7 @@ class MealPlan
                         WHEN mp.proposal_meal_id IS NOT NULL
                              AND EXISTS (
                                 SELECT 1 FROM meal_recipes mr
-                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                                WHERE mr.proposal_meal_id = COALESCE(mp.canonical_proposal_meal_id, mp.proposal_meal_id)
                              )
                         THEN 1 ELSE 0
                     END AS has_recipe
@@ -514,7 +715,7 @@ class MealPlan
                              AND EXISTS (
                                 SELECT 1
                                 FROM meal_recipes mr
-                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                                WHERE mr.proposal_meal_id = COALESCE(mp.canonical_proposal_meal_id, mp.proposal_meal_id)
                              )
                         THEN 1
                         ELSE 0
@@ -571,7 +772,7 @@ class MealPlan
                              AND EXISTS (
                                 SELECT 1
                                 FROM meal_recipes mr
-                                WHERE mr.proposal_meal_id = mp.proposal_meal_id
+                                WHERE mr.proposal_meal_id = COALESCE(mp.canonical_proposal_meal_id, mp.proposal_meal_id)
                              )
                         THEN 1
                         ELSE 0
@@ -586,12 +787,137 @@ class MealPlan
         return $row !== false ? $row : null;
     }
 
+    private static function getRepresentativePlanRow(PDO $db, int $userId, int $weekId, int $dayOfWeek, string $mealType): ?array
+    {
+        $stmt = $db->prepare(
+            'SELECT day_of_week, meal_type, pairing_key
+             FROM meal_plans
+             WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?
+             ORDER BY is_chosen DESC, alternative ASC
+             LIMIT 1'
+        );
+        $stmt->execute([$userId, $weekId, $dayOfWeek, $mealType]);
+        $row = $stmt->fetch();
+
+        return $row !== false ? $row : null;
+    }
+
+    private static function slotExistsForPairingKey(
+        PDO $db,
+        int $userId,
+        int $weekId,
+        int $dayOfWeek,
+        string $mealType,
+        string $pairingKey
+    ): bool {
+        $stmt = $db->prepare(
+            'SELECT 1
+             FROM meal_plans
+             WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ? AND pairing_key = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$userId, $weekId, $dayOfWeek, $mealType, $pairingKey]);
+        return $stmt->fetch() !== false;
+    }
+
+    /**
+     * @return array<int, array{day:int,meal_type:string}>
+     */
+    private static function resolveAffectedSlotRefs(
+        PDO $db,
+        int $userId,
+        int $weekId,
+        int $dayOfWeek,
+        string $mealType,
+        ?string $pairingKey
+    ): array {
+        if ($pairingKey !== null && $mealType === 'dinner' && $dayOfWeek < 7
+            && self::slotExistsForPairingKey($db, $userId, $weekId, $dayOfWeek + 1, 'lunch', $pairingKey)) {
+            return [
+                ['day' => $dayOfWeek, 'meal_type' => 'dinner'],
+                ['day' => $dayOfWeek + 1, 'meal_type' => 'lunch'],
+            ];
+        }
+
+        if ($pairingKey !== null && $mealType === 'lunch' && $dayOfWeek > 1
+            && self::slotExistsForPairingKey($db, $userId, $weekId, $dayOfWeek - 1, 'dinner', $pairingKey)) {
+            return [
+                ['day' => $dayOfWeek - 1, 'meal_type' => 'dinner'],
+                ['day' => $dayOfWeek, 'meal_type' => 'lunch'],
+            ];
+        }
+
+        return [['day' => $dayOfWeek, 'meal_type' => $mealType]];
+    }
+
+    /**
+     * @return array{requested_day:int,requested_meal_type:string,anchor_day:int,is_paired:bool,pairing_key:?string,slots:array<int,array{day:int,meal_type:string}>}|null
+     */
+    private static function resolveSwapGroupForUser(PDO $db, int $userId, int $weekId, int $dayOfWeek, string $mealType): ?array
+    {
+        $plan = self::getRepresentativePlanRow($db, $userId, $weekId, $dayOfWeek, $mealType);
+        if ($plan === null) {
+            return null;
+        }
+
+        $pairingKey = self::normalizePairingKey($plan['pairing_key'] ?? null);
+        $slots = self::resolveAffectedSlotRefs($db, $userId, $weekId, $dayOfWeek, $mealType, $pairingKey);
+
+        return [
+            'requested_day' => $dayOfWeek,
+            'requested_meal_type' => $mealType,
+            'anchor_day' => (int) ($slots[0]['day'] ?? $dayOfWeek),
+            'is_paired' => count($slots) > 1,
+            'pairing_key' => $pairingKey,
+            'slots' => $slots,
+        ];
+    }
+
+    /**
+     * @param array{requested_day:int,requested_meal_type:string,anchor_day:int,is_paired:bool,pairing_key:?string,slots:array<int,array{day:int,meal_type:string}>} $groupA
+     * @param array{requested_day:int,requested_meal_type:string,anchor_day:int,is_paired:bool,pairing_key:?string,slots:array<int,array{day:int,meal_type:string}>} $groupB
+     */
+    private static function swapGroupSlotsForUser(PDO $db, int $userId, int $weekId, array $groupA, array $groupB): void
+    {
+        foreach ($groupA['slots'] as $index => $slotA) {
+            $slotB = $groupB['slots'][$index];
+            $tempDayA = 91 + ($index * 2);
+            $tempDayB = 92 + ($index * 2);
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ?
+                 WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$tempDayA, $userId, $weekId, $slotA['day'], $slotA['meal_type']]);
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ?
+                 WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$tempDayB, $userId, $weekId, $slotB['day'], $slotB['meal_type']]);
+        }
+
+        foreach ($groupA['slots'] as $index => $slotA) {
+            $slotB = $groupB['slots'][$index];
+            $tempDayA = 91 + ($index * 2);
+            $tempDayB = 92 + ($index * 2);
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ?
+                 WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$slotB['day'], $userId, $weekId, $tempDayA, $slotA['meal_type']]);
+
+            $db->prepare(
+                'UPDATE meal_plans SET day_of_week = ?
+                 WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+            )->execute([$slotA['day'], $userId, $weekId, $tempDayB, $slotB['meal_type']]);
+        }
+    }
+
     public static function chooseAlternative(int $userId, int $planId): bool
     {
         $db = Database::get();
 
         $stmt = $db->prepare(
-            'SELECT week_id, day_of_week, meal_type FROM meal_plans WHERE id = ? AND user_id = ?'
+            'SELECT week_id, day_of_week, meal_type, alternative, pairing_key FROM meal_plans WHERE id = ? AND user_id = ?'
         );
         $stmt->execute([$planId, $userId]);
         $plan = $stmt->fetch();
@@ -600,16 +926,32 @@ class MealPlan
             return false;
         }
 
+        $weekId = (int) $plan['week_id'];
+        $dayOfWeek = (int) $plan['day_of_week'];
+        $mealType = (string) $plan['meal_type'];
+        $alternative = (int) $plan['alternative'];
+        $slotRefs = self::resolveAffectedSlotRefs(
+            $db,
+            $userId,
+            $weekId,
+            $dayOfWeek,
+            $mealType,
+            self::normalizePairingKey($plan['pairing_key'] ?? null)
+        );
+
         $db->beginTransaction();
         try {
-            $db->prepare(
-                'UPDATE meal_plans SET is_chosen = 0
-                 WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-            )->execute([$userId, $plan['week_id'], $plan['day_of_week'], $plan['meal_type']]);
+            foreach ($slotRefs as $slotRef) {
+                $db->prepare(
+                    'UPDATE meal_plans SET is_chosen = 0
+                     WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+                )->execute([$userId, $weekId, $slotRef['day'], $slotRef['meal_type']]);
 
-            $db->prepare(
-                'UPDATE meal_plans SET is_chosen = 1 WHERE id = ? AND user_id = ?'
-            )->execute([$planId, $userId]);
+                $db->prepare(
+                    'UPDATE meal_plans SET is_chosen = 1
+                     WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ? AND alternative = ?'
+                )->execute([$userId, $weekId, $slotRef['day'], $slotRef['meal_type'], $alternative]);
+            }
 
             $db->commit();
         } catch (\Throwable $e) {
@@ -622,17 +964,16 @@ class MealPlan
 
     /**
      * Vybere variantu jídla (alt1/alt2) pro všechny členy domácnosti.
-     * Každý uživatel s plánem v daném týdnu dostane v daném slotu stejnou alternativu.
+     * Pokud je jídlo provázané jako večeře + následující oběd, mění se vždy celá dvojice.
      *
      * @param int $planId ID meal_plans záznamu (libovolný uživatel)
-     * @return bool
      */
     public static function chooseAlternativeForHousehold(int $planId): bool
     {
         $db = Database::get();
 
         $stmt = $db->prepare(
-            'SELECT week_id, day_of_week, meal_type, alternative FROM meal_plans WHERE id = ?'
+            'SELECT week_id, day_of_week, meal_type, alternative, pairing_key FROM meal_plans WHERE id = ?'
         );
         $stmt->execute([$planId]);
         $plan = $stmt->fetch();
@@ -643,8 +984,9 @@ class MealPlan
 
         $weekId = (int) $plan['week_id'];
         $dayOfWeek = (int) $plan['day_of_week'];
-        $mealType = $plan['meal_type'];
-        $alt = (int) $plan['alternative'];
+        $mealType = (string) $plan['meal_type'];
+        $alternative = (int) $plan['alternative'];
+        $pairingKey = self::normalizePairingKey($plan['pairing_key'] ?? null);
 
         $userIds = self::getUserIdsWithPlansForWeek($weekId);
         if (empty($userIds)) {
@@ -654,27 +996,18 @@ class MealPlan
         $db->beginTransaction();
         try {
             foreach ($userIds as $userId) {
-                $stmt = $db->prepare(
-                    'SELECT id FROM meal_plans
-                     WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ? AND alternative = ?'
-                );
-                $stmt->execute([$userId, $weekId, $dayOfWeek, $mealType, $alt]);
-                $targetRow = $stmt->fetch();
+                $slotRefs = self::resolveAffectedSlotRefs($db, $userId, $weekId, $dayOfWeek, $mealType, $pairingKey);
+                foreach ($slotRefs as $slotRef) {
+                    $db->prepare(
+                        'UPDATE meal_plans SET is_chosen = 0
+                         WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
+                    )->execute([$userId, $weekId, $slotRef['day'], $slotRef['meal_type']]);
 
-                if ($targetRow === false) {
-                    continue;
+                    $db->prepare(
+                        'UPDATE meal_plans SET is_chosen = 1
+                         WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ? AND alternative = ?'
+                    )->execute([$userId, $weekId, $slotRef['day'], $slotRef['meal_type'], $alternative]);
                 }
-
-                $targetPlanId = (int) $targetRow['id'];
-
-                $db->prepare(
-                    'UPDATE meal_plans SET is_chosen = 0
-                     WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-                )->execute([$userId, $weekId, $dayOfWeek, $mealType]);
-
-                $db->prepare(
-                    'UPDATE meal_plans SET is_chosen = 1 WHERE id = ? AND user_id = ?'
-                )->execute([$targetPlanId, $userId]);
             }
 
             $db->commit();
@@ -720,15 +1053,8 @@ class MealPlan
     }
 
     /**
-     * Prohodí slot (všechny alternativy daného typu jídla) mezi dvěma dny v týdnu.
-     * Snídaně za snídani, svačinu za svačinu atd.
-     *
-     * @param int $userId
-     * @param int $weekId
-     * @param int $dayA Den 1–7
-     * @param int $dayB Den 1–7 (musí být jiný než dayA)
-     * @param string $mealType breakfast, snack_am, lunch, snack_pm, dinner
-     * @return bool
+     * Prohodí slot mezi dvěma dny v týdnu. Pokud slot reprezentuje provázanou dvojici
+     * večeře + následující oběd, prohodí se vždy oba sloty najednou.
      */
     public static function swapSlots(int $userId, int $weekId, int $dayA, int $dayB, string $mealType): bool
     {
@@ -740,28 +1066,15 @@ class MealPlan
         }
 
         $db = Database::get();
+        $groupA = self::resolveSwapGroupForUser($db, $userId, $weekId, $dayA, $mealType);
+        $groupB = self::resolveSwapGroupForUser($db, $userId, $weekId, $dayB, $mealType);
+        if ($groupA === null || $groupB === null || !self::areSwapGroupsCompatible($groupA, $groupB)) {
+            return false;
+        }
+
         $db->beginTransaction();
         try {
-            // Use temporary day values to avoid unique constraint during swap
-            $tempA = 91;
-            $tempB = 92;
-
-            $db->prepare(
-                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-            )->execute([$tempA, $userId, $weekId, $dayA, $mealType]);
-
-            $db->prepare(
-                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-            )->execute([$tempB, $userId, $weekId, $dayB, $mealType]);
-
-            $db->prepare(
-                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-            )->execute([$dayB, $userId, $weekId, $tempA, $mealType]);
-
-            $db->prepare(
-                'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-            )->execute([$dayA, $userId, $weekId, $tempB, $mealType]);
-
+            self::swapGroupSlotsForUser($db, $userId, $weekId, $groupA, $groupB);
             $db->commit();
         } catch (\Throwable $e) {
             $db->rollBack();
@@ -772,14 +1085,7 @@ class MealPlan
     }
 
     /**
-     * Prohodí slot pro všechny uživatele s plánem v daném týdnu.
-     *
-     * @param int $currentUserId Přihlášený uživatel (musí být v rodině)
-     * @param int $weekId
-     * @param int $dayA
-     * @param int $dayB
-     * @param string $mealType
-     * @return bool True pokud alespoň jedna výměna proběhla
+     * Prohodí slot nebo celou večeře-oběd dvojici pro všechny uživatele s plánem v týdnu.
      */
     public static function swapSlotsForHousehold(int $currentUserId, int $weekId, int $dayA, int $dayB, string $mealType): bool
     {
@@ -787,24 +1093,18 @@ class MealPlan
         if (empty($userIds)) {
             return false;
         }
+
         $db = Database::get();
+        $groupA = self::resolveSwapGroupForUser($db, $currentUserId, $weekId, $dayA, $mealType);
+        $groupB = self::resolveSwapGroupForUser($db, $currentUserId, $weekId, $dayB, $mealType);
+        if ($groupA === null || $groupB === null || !self::areSwapGroupsCompatible($groupA, $groupB)) {
+            return false;
+        }
+
         $db->beginTransaction();
         try {
-            $tempA = 91;
-            $tempB = 92;
             foreach ($userIds as $uid) {
-                $db->prepare(
-                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-                )->execute([$tempA, $uid, $weekId, $dayA, $mealType]);
-                $db->prepare(
-                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-                )->execute([$tempB, $uid, $weekId, $dayB, $mealType]);
-                $db->prepare(
-                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-                )->execute([$dayB, $uid, $weekId, $tempA, $mealType]);
-                $db->prepare(
-                    'UPDATE meal_plans SET day_of_week = ? WHERE user_id = ? AND week_id = ? AND day_of_week = ? AND meal_type = ?'
-                )->execute([$dayA, $uid, $weekId, $tempB, $mealType]);
+                self::swapGroupSlotsForUser($db, $uid, $weekId, $groupA, $groupB);
             }
             $db->commit();
             return true;

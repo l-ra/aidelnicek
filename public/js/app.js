@@ -392,6 +392,8 @@ function initSwapDropdown() {
 
         var optionsJson = btn.getAttribute('data-swap-options');
         var mealTypeLabel = btn.getAttribute('data-meal-type-label') || '';
+        var swapGroupLabel = btn.getAttribute('data-swap-group-label') || mealTypeLabel;
+        var isPairedSwap = btn.getAttribute('data-swap-is-paired') === '1';
         var options = [];
         try {
             options = optionsJson ? JSON.parse(optionsJson) : [];
@@ -399,8 +401,10 @@ function initSwapDropdown() {
             options = [];
         }
 
-        titleEl.textContent = 'Vyměnit jídlo';
-        subtitleEl.textContent = 'Vyberte jídlo z jiného dne pro ' + mealTypeLabel + ':';
+        titleEl.textContent = isPairedSwap ? 'Vyměnit dvojici jídel' : 'Vyměnit jídlo';
+        subtitleEl.textContent = isPairedSwap
+            ? 'Vyberte jinou dvojici pro ' + swapGroupLabel + ':'
+            : 'Vyberte jídlo z jiného dne pro ' + mealTypeLabel + ':';
         listEl.innerHTML = '';
 
         var scopeCheckbox = document.getElementById('swap-meal-modal-scope-user-only');
@@ -419,7 +423,8 @@ function initSwapDropdown() {
                 item.setAttribute('data-day', opt.day);
                 item.setAttribute('role', 'listitem');
 
-                var html = '<span class="swap-meal-option__day">' + escapeHtml(opt.dayLabel) + '</span>';
+                var optionLabel = opt.isPaired && opt.pairLabel ? opt.pairLabel : opt.dayLabel;
+                var html = '<span class="swap-meal-option__day">' + escapeHtml(optionLabel) + '</span>';
                 html += '<span class="swap-meal-option__name">' + escapeHtml(opt.mealName) + '</span>';
                 if (opt.description) {
                     html += '<p class="swap-meal-option__desc">' + escapeHtml(opt.description) + '</p>';
@@ -433,6 +438,26 @@ function initSwapDropdown() {
                         html += '<li>' + escapeHtml(text) + '</li>';
                     });
                     html += '</ul>';
+                }
+                if (opt.isPaired && opt.pairedMealName) {
+                    var pairedLabel = opt.pairedMealTypeLabel || 'Navázané jídlo';
+                    if (opt.pairedDayLabel) {
+                        pairedLabel += ' ' + opt.pairedDayLabel;
+                    }
+                    html += '<p class="swap-meal-option__desc"><strong>' + escapeHtml(pairedLabel + ':') + '</strong> ' + escapeHtml(opt.pairedMealName) + '</p>';
+                    if (opt.pairedDescription) {
+                        html += '<p class="swap-meal-option__desc">' + escapeHtml(opt.pairedDescription) + '</p>';
+                    }
+                    if (opt.pairedIngredients && opt.pairedIngredients.length > 0) {
+                        html += '<ul class="swap-meal-option__ingredients">';
+                        opt.pairedIngredients.forEach(function (ing) {
+                            var pairedText = typeof ing === 'object' && ing !== null
+                                ? (ing.name || '') + (ing.quantity ? ' — ' + ing.quantity + (ing.unit ? ' ' + ing.unit : '') : '')
+                                : String(ing);
+                            html += '<li>' + escapeHtml(pairedText) + '</li>';
+                        });
+                        html += '</ul>';
+                    }
                 }
                 item.innerHTML = html;
 
