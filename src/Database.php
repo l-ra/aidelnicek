@@ -180,6 +180,8 @@ class Database
                 meal_name TEXT NOT NULL,
                 description TEXT,
                 ingredients TEXT,
+                canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id),
+                pairing_key TEXT,
                 is_chosen INTEGER DEFAULT 0,
                 is_eaten INTEGER DEFAULT 0,
                 UNIQUE(user_id, week_id, day_of_week, meal_type, alternative)
@@ -284,6 +286,8 @@ class Database
                 meal_name    TEXT NOT NULL,
                 description  TEXT,
                 ingredients  TEXT NOT NULL,
+                canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id),
+                pairing_key  TEXT,
                 UNIQUE(proposal_id, day_of_week, meal_type, alternative)
             );
             SQL,
@@ -305,8 +309,36 @@ class Database
             ALTER TABLE meal_plans ADD COLUMN portion_factor REAL NOT NULL DEFAULT 1.0;
             SQL,
             <<<'SQL'
+            ALTER TABLE meal_plans ADD COLUMN canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id);
+            SQL,
+            <<<'SQL'
+            ALTER TABLE meal_plans ADD COLUMN pairing_key TEXT;
+            SQL,
+            <<<'SQL'
             CREATE INDEX IF NOT EXISTS idx_meal_plans_proposal_meal_id
                 ON meal_plans(proposal_meal_id);
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_meal_plans_canonical_proposal_meal_id
+                ON meal_plans(canonical_proposal_meal_id);
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_meal_plans_pairing_key
+                ON meal_plans(pairing_key);
+            SQL,
+            <<<'SQL'
+            ALTER TABLE llm_proposal_meals ADD COLUMN canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id);
+            SQL,
+            <<<'SQL'
+            ALTER TABLE llm_proposal_meals ADD COLUMN pairing_key TEXT;
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_llm_proposal_meals_canonical_proposal_meal_id
+                ON llm_proposal_meals(canonical_proposal_meal_id);
+            SQL,
+            <<<'SQL'
+            CREATE INDEX IF NOT EXISTS idx_llm_proposal_meals_pairing_key
+                ON llm_proposal_meals(pairing_key);
             SQL,
             // M10: sjednocená LLM job orchestrace + chunk/output tabulky
             <<<'SQL'
@@ -375,6 +407,18 @@ class Database
             <<<'SQL'
             CREATE INDEX IF NOT EXISTS idx_email_change_user_pending
                 ON email_change_requests(user_id, consumed_at);
+            SQL,
+            // M11: doplnění canonical identity i pro starší data bez párování
+            <<<'SQL'
+            UPDATE llm_proposal_meals
+            SET canonical_proposal_meal_id = id
+            WHERE canonical_proposal_meal_id IS NULL;
+            SQL,
+            <<<'SQL'
+            UPDATE meal_plans
+            SET canonical_proposal_meal_id = proposal_meal_id
+            WHERE canonical_proposal_meal_id IS NULL
+              AND proposal_meal_id IS NOT NULL;
             SQL,
         ];
 

@@ -110,44 +110,24 @@ ob_start();
                     <span><?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?></span>
                     <?php if ($weekId > 0): ?>
                     <?php
-                    $swapOptions = [];
-                    for ($d = 1; $d <= 7; $d++) {
-                        if ($d === $day) continue;
-                        $otherSlot = $weekPlan[$d][$mealType] ?? ['alt1' => null, 'alt2' => null];
-                        $otherChosen = null;
-                        foreach (['alt1', 'alt2'] as $k) {
-                            $row = $otherSlot[$k] ?? null;
-                            if ($row !== null && (int) ($row['is_chosen'] ?? 0) === 1) {
-                                $otherChosen = $row;
-                                break;
-                            }
-                        }
-                        if ($otherChosen === null) {
-                            $otherChosen = $otherSlot['alt1'] ?? $otherSlot['alt2'];
-                        }
-                        $ingredients = [];
-                        if (!empty($otherChosen['ingredients'])) {
-                            $ingredients = json_decode($otherChosen['ingredients'], true) ?? [];
-                        }
-                        $swapOptions[] = [
-                            'day' => $d,
-                            'dayLabel' => MealPlan::getDayShortLabel($d),
-                            'dayFullLabel' => MealPlan::getDayLabel($d),
-                            'mealName' => $otherChosen['meal_name'] ?? '—',
-                            'description' => $otherChosen['description'] ?? '',
-                            'ingredients' => $ingredients,
-                        ];
-                    }
+                    $swapGroup = MealPlan::getSwapGroupInfo($weekPlan, $day, $mealType);
+                    $swapOptions = MealPlan::getSwapOptionsForWeekPlan($weekPlan, $day, $mealType);
+                    $swapGroupLabel = MealPlan::getSwapGroupLabel($swapGroup);
+                    $swapIsPaired = !empty($swapGroup['is_paired']);
                     ?>
                     <div class="meal-card__swap-wrap">
                         <button type="button"
                                 class="btn btn-secondary btn-sm meal-card__swap-btn"
                                 data-meal-type="<?= htmlspecialchars($mealType) ?>"
                                 data-meal-type-label="<?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?>"
+                                data-swap-group-label="<?= htmlspecialchars($swapGroupLabel) ?>"
+                                data-swap-is-paired="<?= $swapIsPaired ? '1' : '0' ?>"
                                 data-swap-options="<?= htmlspecialchars(json_encode($swapOptions)) ?>"
                                 aria-haspopup="dialog"
-                                aria-label="Vyměnit <?= htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) ?> za jiný den">
-                            Vyměnit za…
+                                aria-label="<?= $swapIsPaired
+                                    ? 'Vyměnit celou dvojici ' . htmlspecialchars($swapGroupLabel)
+                                    : 'Vyměnit ' . htmlspecialchars(MealPlan::getMealTypeLabel($mealType)) . ' za jiný den' ?>">
+                            <?= $swapIsPaired ? 'Vyměnit dvojici…' : 'Vyměnit za…' ?>
                         </button>
                     </div>
                     <?php endif; ?>

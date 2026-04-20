@@ -204,16 +204,110 @@ class GenerationJobProjector
     }
 
     /**
-     * @return array<string, array{proposal_meal_id:int,meal_name:string,description:string,ingredients:array<int,mixed>,day:int,meal_type:string,alternative:int}>
+     * @return array<string, array{
+     *     proposal_meal_id:int,
+     *     canonical_proposal_meal_id:int,
+     *     pairing_key:?string,
+     *     meal_name:string,
+     *     description:string,
+     *     ingredients:array<int,mixed>,
+     *     day:int,
+     *     meal_type:string,
+     *     alternative:int
+     * }>
      */
     private static function insertProposalMeals(PDO $db, int $proposalId, array $days): array
     {
-        $proposalMeals = [];
-        $stmt = $db->prepare(
+        $proposalMeals = self::buildProposalMealEntries($days);
+        if (empty($proposalMeals)) {
+            return [];
+        }
+
+        $insertStmt = $db->prepare(
             'INSERT INTO llm_proposal_meals
-                (proposal_id, day_of_week, meal_type, alternative, meal_name, description, ingredients)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
+                (proposal_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, canonical_proposal_meal_id, pairing_key)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)'
         );
+        $updateStmt = $db->prepare(
+            'UPDATE llm_proposal_meals
+             SET canonical_proposal_meal_id = ?, pairing_key = ?
+             WHERE id = ?'
+        );
+
+        ksort($proposalMeals);
+        foreach ($proposalMeals as $key => $mealEntry) {
+            $insertStmt->execute([
+                $proposalId,
+                $mealEntry['day'],
+                $mealEntry['meal_type'],
+                $mealEntry['alternative'],
+                $mealEntry['meal_name'],
+                $mealEntry['description'],
+                json_encode($mealEntry['ingredients'], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+            ]);
+            $proposalMealId = (int) $db->lastInsertId();
+
+            $proposalMeals[$key]['proposal_meal_id'] = $proposalMealId;
+            $proposalMeals[$key]['canonical_proposal_meal_id'] = $proposalMealId;
+            $proposalMeals[$key]['pairing_key'] = null;
+        }
+
+        foreach ($proposalMeals as $key => $mealEntry) {
+            $canonicalLookupKey = $mealEntry['canonical_lookup_key'] ?? null;
+            if (!is_string($canonicalLookupKey) || $canonicalLookupKey === '' || !isset($proposalMeals[$canonicalLookupKey])) {
+                continue;
+            }
+
+            $canonicalEntry = $proposalMeals[$canonicalLookupKey];
+            $pairingKey = 'carryover:' . $proposalId . ':' . $canonicalLookupKey;
+
+            $proposalMeals[$canonicalLookupKey]['canonical_proposal_meal_id'] =
+                (int) ($proposalMeals[$canonicalLookupKey]['proposal_meal_id'] ?? 0);
+            $proposalMeals[$canonicalLookupKey]['pairing_key'] = $pairingKey;
+            $proposalMeals[$key]['canonical_proposal_meal_id'] = (int) ($canonicalEntry['proposal_meal_id'] ?? 0);
+            $proposalMeals[$key]['pairing_key'] = $pairingKey;
+        }
+
+        foreach ($proposalMeals as $key => $mealEntry) {
+            $canonicalProposalMealId = (int) ($mealEntry['canonical_proposal_meal_id'] ?? 0);
+            if ($canonicalProposalMealId <= 0) {
+                $canonicalProposalMealId = (int) $mealEntry['proposal_meal_id'];
+                $proposalMeals[$key]['canonical_proposal_meal_id'] = $canonicalProposalMealId;
+            }
+
+            $updateStmt->execute([
+                $canonicalProposalMealId,
+                $mealEntry['pairing_key'],
+                (int) $mealEntry['proposal_meal_id'],
+            ]);
+
+            unset(
+                $proposalMeals[$key]['canonical_lookup_key'],
+                $proposalMeals[$key]['same_meal_as_previous_dinner']
+            );
+        }
+
+        return $proposalMeals;
+    }
+
+    /**
+     * @return array<string, array{
+     *     proposal_meal_id:int,
+     *     canonical_proposal_meal_id:int,
+     *     pairing_key:?string,
+     *     meal_name:string,
+     *     description:string,
+     *     ingredients:array<int,mixed>,
+     *     day:int,
+     *     meal_type:string,
+     *     alternative:int,
+     *     same_meal_as_previous_dinner:bool,
+     *     canonical_lookup_key:?string
+     * }>
+     */
+    private static function buildProposalMealEntries(array $days): array
+    {
+        $proposalMeals = [];
 
         foreach ($days as $dayData) {
             if (!is_array($dayData)) {
@@ -242,36 +336,46 @@ class GenerationJobProjector
                     }
 
                     $mealName = trim((string) ($alt['name'] ?? ''));
-                    if ($mealName === '') {
-                        continue;
-                    }
-
                     $description = (string) ($alt['description'] ?? '');
                     $ingredients = $alt['ingredients'] ?? [];
                     if (!is_array($ingredients)) {
                         $ingredients = [];
                     }
 
-                    $stmt->execute([
-                        $proposalId,
-                        $dayNum,
-                        $mealType,
-                        $altNum,
-                        $mealName,
-                        $description,
-                        json_encode($ingredients, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
-                    ]);
-                    $proposalMealId = (int) $db->lastInsertId();
-
                     $key = "{$dayNum}|{$mealType}|{$altNum}";
+                    $canonicalLookupKey = null;
+                    $sameMealAsPreviousDinner = false;
+
+                    if (
+                        $mealType === 'lunch'
+                        && $dayNum > 1
+                        && self::isEnabledCarryoverFlag($alt['same_meal_as_previous_dinner'] ?? false)
+                    ) {
+                        $candidateLookupKey = ($dayNum - 1) . '|dinner|' . $altNum;
+                        if (isset($proposalMeals[$candidateLookupKey])) {
+                            $canonicalLookupKey = $candidateLookupKey;
+                            $sameMealAsPreviousDinner = true;
+                            $mealName = $proposalMeals[$candidateLookupKey]['meal_name'];
+                            $description = $proposalMeals[$candidateLookupKey]['description'];
+                        }
+                    }
+
+                    if ($mealName === '') {
+                        continue;
+                    }
+
                     $proposalMeals[$key] = [
-                        'proposal_meal_id' => $proposalMealId,
+                        'proposal_meal_id' => 0,
+                        'canonical_proposal_meal_id' => 0,
+                        'pairing_key' => null,
                         'meal_name' => $mealName,
                         'description' => $description,
                         'ingredients' => $ingredients,
                         'day' => $dayNum,
                         'meal_type' => $mealType,
                         'alternative' => $altNum,
+                        'same_meal_as_previous_dinner' => $sameMealAsPreviousDinner,
+                        'canonical_lookup_key' => $canonicalLookupKey,
                     ];
                 }
             }
@@ -281,7 +385,37 @@ class GenerationJobProjector
     }
 
     /**
-     * @param array<string, array{proposal_meal_id:int,meal_name:string,description:string,ingredients:array<int,mixed>,day:int,meal_type:string,alternative:int}> $proposalMeals
+     * @param mixed $value
+     */
+    private static function isEnabledCarryoverFlag(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (int) $value === 1;
+        }
+
+        if (!is_string($value)) {
+            return false;
+        }
+
+        return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'ano'], true);
+    }
+
+    /**
+     * @param array<string, array{
+     *     proposal_meal_id:int,
+     *     canonical_proposal_meal_id:int,
+     *     pairing_key:?string,
+     *     meal_name:string,
+     *     description:string,
+     *     ingredients:array<int,mixed>,
+     *     day:int,
+     *     meal_type:string,
+     *     alternative:int
+     * }> $proposalMeals
      */
     private static function seedMealPlansForUser(
         PDO $db,
@@ -297,8 +431,8 @@ class GenerationJobProjector
 
         $insertStmt = $db->prepare(
             'INSERT OR IGNORE INTO meal_plans
-                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, proposal_meal_id, portion_factor, is_chosen)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, proposal_meal_id, canonical_proposal_meal_id, pairing_key, portion_factor, is_chosen)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
 
         ksort($proposalMeals);
@@ -316,6 +450,8 @@ class GenerationJobProjector
                 $mealEntry['description'],
                 $ingredientsJson,
                 $mealEntry['proposal_meal_id'],
+                $mealEntry['canonical_proposal_meal_id'],
+                $mealEntry['pairing_key'],
                 $portionFactor,
                 ((int) $mealEntry['alternative'] === 1) ? 1 : 0,
             ]);

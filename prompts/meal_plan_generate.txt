@@ -14,6 +14,8 @@ Profil uživatele:
 Pravidla pro sestavení jídelníčku:
 - 5 chodů denně: snídaně (breakfast), dopolední svačina (snack_am), oběd (lunch), odpolední svačina (snack_pm), večeře (dinner)
 - Každý chod má dvě alternativy (alt1, alt2) — musí se navzájem lišit
+- U oběda můžeš volitelně navázat na večeři předchozího dne jako na stejné jídlo v jiné porci; v tom případě u příslušné obědové varianty nastav "same_meal_as_previous_dinner": true, zachovej návaznost alt1 -> alt1 a alt2 -> alt2 a ingredience přizpůsob menší nebo jinak vhodné porci téhož jídla
+- Pokud oběd na předchozí večeři nenavazuje, atribut "same_meal_as_previous_dinner" vynech nebo nastav na false
 - Ingredience uváděj jako pole objektů s klíči "name" (string), "quantity" (číslo), "unit" (string, např. "g", "ml", "ks", "lžíce", "hrst", "špetka")
 - Ke každému jídlu vždy zahrň koření a dochucení vhodná pro daný pokrm: sůl, pepř, česnek, bylinky (oregano, bazalka, tymián, petrželka), kmín, papriková pasta, sojová omáčka, ocet, citron, zázvor, kari, chilli — podle typu jídla (asijské, italské, české atd.), aby byla chuť pestrá a výrazná
 - Jídla musí být realistická, vařitelná z běžně dostupných surovin v ČR
