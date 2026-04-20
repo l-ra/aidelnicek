@@ -432,8 +432,8 @@ class Database
             applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )');
 
-        foreach ($migrations as $i => $sql) {
-            $name = 'migration_' . ($i + 1);
+        foreach ($migrations as $sql) {
+            $name = self::migrationName($sql);
             $stmt = $db->prepare('SELECT 1 FROM migrations WHERE name = ?');
             $stmt->execute([$name]);
             if ($stmt->fetch() === false) {
@@ -450,6 +450,18 @@ class Database
                 $db->prepare('INSERT INTO migrations (name) VALUES (?)')->execute([$name]);
             }
         }
+    }
+
+    /**
+     * Poziční názvy migration_1, migration_2, ... se rozbijí při vložení nové migrace doprostřed pole,
+     * protože starší databáze pak považují jiný SQL blok za už aplikovaný. Stabilní hash názvu zajistí,
+     * že se chybějící ALTER/UPDATE kroky doběhnou i na existujících SQLite souborech.
+     */
+    private static function migrationName(string $sql): string
+    {
+        $normalizedSql = preg_replace('/\s+/', ' ', trim($sql)) ?? trim($sql);
+
+        return 'migration_' . substr(sha1($normalizedSql), 0, 16);
     }
 
     /**
