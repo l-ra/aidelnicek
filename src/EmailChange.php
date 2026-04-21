@@ -69,12 +69,13 @@ final class EmailChange
     public static function getPendingForUser(int $userId): ?array
     {
         $db = Database::get();
+        $now  = Database::sqlNow();
         $stmt = $db->prepare(
-            'SELECT id, new_email, old_email, expires_at
+            "SELECT id, new_email, old_email, expires_at
              FROM email_change_requests
-             WHERE user_id = ? AND consumed_at IS NULL AND expires_at > datetime("now")
+             WHERE user_id = ? AND consumed_at IS NULL AND expires_at > {$now}
              ORDER BY id DESC
-             LIMIT 1'
+             LIMIT 1"
         );
         $stmt->execute([$userId]);
         $row = $stmt->fetch();
@@ -283,8 +284,9 @@ final class EmailChange
                 return 'mismatch';
             }
 
+            $consumedNow = Database::sqlNow();
             $db->prepare(
-                'UPDATE email_change_requests SET consumed_at = datetime("now") WHERE id = ? AND consumed_at IS NULL'
+                "UPDATE email_change_requests SET consumed_at = {$consumedNow} WHERE id = ? AND consumed_at IS NULL"
             )->execute([$parsed['request_id']]);
 
             $db->prepare('DELETE FROM remember_tokens WHERE user_id = ?')->execute([$parsed['user_id']]);

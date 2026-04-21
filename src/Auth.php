@@ -95,8 +95,9 @@ class Auth
     {
         $db = Database::get();
         $hash = hash('sha256', $token);
+        $now  = Database::sqlNow();
         $stmt = $db->prepare(
-            'SELECT user_id FROM remember_tokens WHERE token_hash = ? AND expires_at > datetime("now")'
+            "SELECT user_id FROM remember_tokens WHERE token_hash = ? AND expires_at > {$now}"
         );
         $stmt->execute([$hash]);
         $row = $stmt->fetch();
