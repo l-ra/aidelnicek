@@ -1,4 +1,5 @@
 <?php
+use Aidelnicek\ApplicationDataExport;
 use Aidelnicek\Url;
 
 $pageTitle = 'Administrace';
@@ -6,6 +7,7 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
 
 $db    = \Aidelnicek\Database::get();
 $users = $db->query('SELECT id, name, email FROM users ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
+$exportSchemaFingerprint = ApplicationDataExport::schemaFingerprint($db);
 
 $successCode = $_GET['success'] ?? '';
 $seeded = $successCode === 'seeded';
@@ -27,6 +29,18 @@ $mailStatus = \Aidelnicek\Mailer::getAdminStatus();
 $emailTestOk = ($_GET['email_test'] ?? '') === 'ok';
 $emailTestErr = trim((string) ($_GET['email_test_error'] ?? ''));
 $emailTestCsrf = ($_GET['email_test'] ?? '') === 'csrf';
+
+$importOk = ($_GET['import_ok'] ?? '') === '1';
+$importRows = isset($_GET['import_rows']) ? (int) $_GET['import_rows'] : 0;
+$importTables = isset($_GET['import_tables']) ? (int) $_GET['import_tables'] : 0;
+$importErrRaw = isset($_GET['import_error']) ? (string) $_GET['import_error'] : '';
+$importErrCsrf = $importErrRaw === 'csrf';
+$importErrNoFile = $importErrRaw === 'no_file';
+$importErrRead = $importErrRaw === 'read_failed';
+$importErrMessage = '';
+if ($importErrRaw !== '' && !$importErrCsrf && !$importErrNoFile && !$importErrRead) {
+    $importErrMessage = $importErrRaw;
+}
 
 ob_start();
 ?>
@@ -51,6 +65,20 @@ ob_start();
         <div class="alert alert-error">Odeslání testovacího e-mailu selhalo: <?= htmlspecialchars($emailTestErr) ?></div>
     <?php endif; ?>
 
+    <?php if ($importOk): ?>
+        <div class="alert alert-success">
+            Import dokončen. Zpracováno tabulek: <?= (int) $importTables ?>, vloženo řádků celkem: <?= (int) $importRows ?>.
+        </div>
+    <?php elseif ($importErrCsrf): ?>
+        <div class="alert alert-error">Neplatný bezpečnostní token (import). Zkuste to znovu.</div>
+    <?php elseif ($importErrNoFile): ?>
+        <div class="alert alert-error">Nebyl vybrán soubor k importu.</div>
+    <?php elseif ($importErrRead): ?>
+        <div class="alert alert-error">Soubor se nepodařilo přečíst.</div>
+    <?php elseif ($importErrMessage !== ''): ?>
+        <div class="alert alert-error">Import se nezdařil: <?= htmlspecialchars($importErrMessage) ?></div>
+    <?php endif; ?>
+
     <?php if (!$mailStatus['configured']): ?>
         <div class="alert alert-error" role="status">
             Odesílání e-mailů není k dispozici: v prostředí nejsou nastaveny všechny proměnné
@@ -66,6 +94,35 @@ ob_start();
             <h2>Prohlížeč tabulek</h2>
             <p>Zobrazení, úprava a mazání záznamů v tabulkách databáze se stránkováním.</p>
             <a href="<?= Url::hu('/admin/table') ?>" class="btn btn-primary">Otevřít prohlížeč</a>
+        </div>
+
+        <div class="admin-card">
+            <h2>Export / import dat (SQLite)</h2>
+            <p>
+                Stáhne nebo nahraje <strong>veškerá data této domácnosti</strong> z hlavní databáze.
+                Soubory LLM logů (<code>llm_*.db</code>) nejsou součástí exportu.
+            </p>
+            <dl class="info-list" style="margin-top:0.75rem">
+                <dt>Verze formátu exportu</dt>
+                <dd><?= (int) ApplicationDataExport::EXPORT_FORMAT_VERSION ?></dd>
+                <dt>Otisk schématu (cíl importu musí sedět)</dt>
+                <dd style="word-break:break-all;font-family:ui-monospace,monospace;font-size:0.9em"><?= htmlspecialchars($exportSchemaFingerprint) ?></dd>
+            </dl>
+            <p style="margin-top:1rem">
+                <a href="<?= Url::hu('/admin/data-export.json.gz') ?>" class="btn btn-primary">Stáhnout export (.json.gz)</a>
+            </p>
+            <hr style="margin:1.25rem 0;border:none;border-top:1px solid var(--border-color, #ddd)">
+            <p><strong>Import</strong> načte gzip export, smaže obsah všech tabulek v této databázi a vloží data z exportu.
+                Funguje jen při <strong>shodné verzi formátu</strong> a <strong>shodném otisku schématu</strong> jako výše.</p>
+            <form method="post" action="<?= Url::hu('/admin/data-import') ?>" enctype="multipart/form-data"
+                  onsubmit="return confirm('Tímto přepíšete všechna data v databázi této domácnosti. Pokračovat?');">
+                <?= \Aidelnicek\Csrf::field() ?>
+                <div class="form-group">
+                    <label for="import-file">Soubor exportu (.json.gz)</label>
+                    <input id="import-file" type="file" name="import_file" accept=".gz,application/gzip" required>
+                </div>
+                <button type="submit" class="btn btn-secondary">Importovat a přepsat data</button>
+            </form>
         </div>
 
         <div class="admin-card">
