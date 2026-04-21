@@ -48,6 +48,7 @@ class Database
         }
 
         if ($tenantSlug === null || $tenantSlug === '') {
+            TenantContext::reset();
             self::$connection = null;
             self::$activeTenantSlug = null;
             self::$dataDir = '';
@@ -57,6 +58,8 @@ class Database
 
             return;
         }
+
+        TenantContext::initFromSlug($tenantSlug);
 
         if (!Tenant::tenantExists($basePath, $tenantSlug)) {
             throw new \InvalidArgumentException('Neexistující tenant: ' . $tenantSlug);
@@ -540,12 +543,21 @@ class Database
         $password = rtrim(strtr(base64_encode(random_bytes(12)), '+/', '-_'), '=');
         $hash     = password_hash($password, PASSWORD_DEFAULT);
 
+        $tenantSlug = self::$activeTenantSlug ?? '';
+        $adminEmail = EmailChange::defaultAdminEmail();
+        $adminName  = $tenantSlug !== ''
+            ? 'Administrátor — ' . $tenantSlug
+            : 'Administrátor';
+
         $db->prepare(
             'INSERT INTO users (name, email, password_hash, is_admin) VALUES (?, ?, ?, 1)'
-        )->execute(['Administrátor', 'admin@localhost', $hash]);
+        )->execute([$adminName, $adminEmail, $hash]);
 
-        $message  = "Aidelnicek: Byl vytvořen výchozí administrátorský účet (tenant).\n"
-                  . "  E-mail:  admin@localhost\n"
+        $tenantLine = $tenantSlug !== '' ? "  Tenant:  {$tenantSlug}\n" : '';
+        $message  = "Aidelnicek: Byl vytvořen výchozí administrátorský účet.\n"
+                  . $tenantLine
+                  . "  Jméno:   {$adminName}\n"
+                  . "  E-mail:  {$adminEmail}\n"
                   . "  Heslo:   {$password}\n"
                   . "  Čas:     " . date('Y-m-d H:i:s') . "\n";
 

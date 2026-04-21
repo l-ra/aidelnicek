@@ -55,7 +55,12 @@ final class EmailChange
 
     public static function defaultAdminEmail(): string
     {
-        return 'admin@localhost';
+        $slug = TenantContext::slug();
+        if ($slug === null || $slug === '') {
+            return 'admin@localhost';
+        }
+
+        return 'admin@' . strtolower($slug);
     }
 
     /**
