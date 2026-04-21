@@ -24,6 +24,14 @@ class Database
     }
 
     /**
+     * SQL výraz pro aktuální čas (SQLite: datetime('now'), PostgreSQL: CURRENT_TIMESTAMP).
+     */
+    public static function sqlNow(): string
+    {
+        return self::$usePostgres ? 'CURRENT_TIMESTAMP' : "datetime('now')";
+    }
+
+    /**
      * PostgreSQL schéma tenanta (search_path). Pouze v PG režimu.
      */
     public static function getPostgresTenantSchema(): string
