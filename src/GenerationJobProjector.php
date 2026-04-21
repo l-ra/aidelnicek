@@ -435,9 +435,12 @@ class GenerationJobProjector
         }
 
         $insertStmt = $db->prepare(
-            'INSERT OR IGNORE INTO meal_plans
-                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, proposal_meal_id, canonical_proposal_meal_id, pairing_key, portion_factor, is_chosen)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            Database::buildInsertOrIgnore(
+                'meal_plans',
+                'user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, proposal_meal_id, canonical_proposal_meal_id, pairing_key, portion_factor, is_chosen',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?',
+                'user_id, week_id, day_of_week, meal_type, alternative'
+            )
         );
 
         ksort($proposalMeals);

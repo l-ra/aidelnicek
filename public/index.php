@@ -874,7 +874,7 @@ $router->post('/admin/llm-generate', function () use ($projectRoot) {
         $weekYear = (int) $_POST['year'];
         if ($weekNum >= 1 && $weekNum <= 53 && $weekYear >= 2024) {
             Database::get()->prepare(
-                'INSERT OR IGNORE INTO weeks (week_number, year) VALUES (?, ?)'
+                Database::buildInsertOrIgnore('weeks', 'week_number, year', '?, ?', 'week_number, year')
             )->execute([$weekNum, $weekYear]);
             $row = Database::get()->prepare('SELECT id FROM weeks WHERE week_number = ? AND year = ?');
             $row->execute([$weekNum, $weekYear]);

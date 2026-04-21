@@ -234,7 +234,9 @@ class MealPlan
             return $row;
         }
 
-        $db->prepare('INSERT OR IGNORE INTO weeks (week_number, year) VALUES (?, ?)')->execute([$weekNumber, $year]);
+        $db->prepare(
+            Database::buildInsertOrIgnore('weeks', 'week_number, year', '?, ?', 'week_number, year')
+        )->execute([$weekNumber, $year]);
         $stmt->execute([$weekNumber, $year]);
         $row = $stmt->fetch();
 
@@ -1139,9 +1141,12 @@ class MealPlan
 
         $db   = Database::get();
         $stmt = $db->prepare(
-            'INSERT OR IGNORE INTO meal_plans
-                (user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, is_chosen)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            Database::buildInsertOrIgnore(
+                'meal_plans',
+                'user_id, week_id, day_of_week, meal_type, alternative, meal_name, description, ingredients, is_chosen',
+                '?, ?, ?, ?, ?, ?, ?, ?, ?',
+                'user_id, week_id, day_of_week, meal_type, alternative'
+            )
         );
 
         for ($day = 1; $day <= 7; $day++) {
