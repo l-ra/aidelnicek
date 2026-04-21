@@ -170,15 +170,26 @@ class Database
                     $cfg['port'],
                     $cfg['database']
                 );
-                self::$connection = new PDO(
-                    $dsn,
-                    $cfg['user'],
-                    $cfg['password'],
-                    [
-                        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    ]
-                );
+                try {
+                    self::$connection = new PDO(
+                        $dsn,
+                        $cfg['user'],
+                        $cfg['password'],
+                        [
+                            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                        ]
+                    );
+                } catch (\PDOException $e) {
+                    if (self::isPostgresPasswordAuthFailure($e)) {
+                        error_log(
+                            'PostgreSQL: selhala autentizace (heslo). '
+                            . self::postgresAuthDebugLine($cfg)
+                            . ' | původní výjimka: ' . $e->getMessage()
+                        );
+                    }
+                    throw $e;
+                }
                 self::$connection->exec('SET client_encoding TO UTF8');
                 self::ensurePostgresTenantSchema(self::$connection, self::$pgSchema);
                 self::$connection->exec(
@@ -206,6 +217,53 @@ class Database
         }
 
         return self::$connection;
+    }
+
+    /**
+     * Diagnostika při chybě „password authentication failed“ — neprozrazuje celé heslo.
+     */
+    private static function isPostgresPasswordAuthFailure(\PDOException $e): bool
+    {
+        $msg = $e->getMessage();
+
+        return stripos($msg, 'password authentication failed') !== false
+            || ($e->errorInfo[0] ?? '') === '28P01';
+    }
+
+    /**
+     * Krátký náhled tajného řetězce (začátek + konec) pro logy; střed je vynechán.
+     */
+    private static function redactSecretEdges(string $secret, int $edgeLen = 2): string
+    {
+        $len = strlen($secret);
+        if ($len === 0) {
+            return '(prázdné)';
+        }
+        $edgeLen = max(1, $edgeLen);
+        if ($len <= $edgeLen * 2) {
+            return str_repeat('*', min(8, $len)) . ' (délka ' . $len . ')';
+        }
+
+        return substr($secret, 0, $edgeLen)
+            . '…'
+            . substr($secret, -$edgeLen)
+            . ' (délka ' . $len . ')';
+    }
+
+    /**
+     * @param array{server: string, port: int, database: string, user: string, password: string} $cfg
+     */
+    private static function postgresAuthDebugLine(array $cfg): string
+    {
+        return sprintf(
+            'DSN host=%s port=%d dbname=%s user=%s | heslo délka=%d náhled=%s',
+            $cfg['server'],
+            $cfg['port'],
+            $cfg['database'],
+            $cfg['user'],
+            strlen($cfg['password']),
+            self::redactSecretEdges($cfg['password'])
+        );
     }
 
     /**
