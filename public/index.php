@@ -5,6 +5,7 @@ declare(strict_types=1);
 $projectRoot = dirname(__DIR__);
 require $projectRoot . '/vendor/autoload.php';
 
+use Aidelnicek\ApplicationDataExport;
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
@@ -365,6 +366,61 @@ $router->get('/admin', function () use ($projectRoot) {
     }
     require $projectRoot . '/templates/admin.php';
 });
+
+$router->get('/admin/data-export.json.gz', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: ' . Url::u('/'));
+        exit;
+    }
+
+    $tenantSlug = TenantContext::requireSlug();
+    $db         = Database::get();
+    $gz         = ApplicationDataExport::exportToGzipJson($db, $tenantSlug);
+
+    $safeSlug = preg_replace('/[^a-z0-9_-]+/i', '-', $tenantSlug) ?: 'tenant';
+    $filename = 'aidelnicek-export-' . $safeSlug . '-' . gmdate('Ymd-His') . 'Z.json.gz';
+
+    header('Content-Type: application/gzip');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Content-Length: ' . (string) strlen($gz));
+    header('Cache-Control: no-store');
+    echo $gz;
+    exit;
+});
+
+$router->post('/admin/data-import', $requireCsrf('/admin?import_error=csrf', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: ' . Url::u('/'));
+        exit;
+    }
+
+    if (empty($_FILES['import_file']['tmp_name']) || !is_uploaded_file((string) $_FILES['import_file']['tmp_name'])) {
+        header('Location: ' . Url::u('/admin?import_error=no_file'));
+        exit;
+    }
+
+    $path = (string) $_FILES['import_file']['tmp_name'];
+    $raw  = @file_get_contents($path);
+    if ($raw === false || $raw === '') {
+        header('Location: ' . Url::u('/admin?import_error=read_failed'));
+        exit;
+    }
+
+    $db     = Database::get();
+    $result = ApplicationDataExport::importFromGzipJson($db, $raw);
+    if (($result['ok'] ?? false) !== true) {
+        $msg = isset($result['error']) ? (string) $result['error'] : 'Neznámá chyba importu.';
+        header('Location: ' . Url::u('/admin?import_error=' . rawurlencode($msg)));
+        exit;
+    }
+
+    $rows = (int) ($result['rows_imported'] ?? 0);
+    $tbls = (int) ($result['tables_imported'] ?? 0);
+    header('Location: ' . Url::u('/admin?import_ok=1&import_rows=' . $rows . '&import_tables=' . $tbls));
+    exit;
+}));
 
 $router->post('/admin/mail-test', $requireCsrf('/admin?email_test=csrf', function () {
     $adminUser = Auth::requireLogin();
