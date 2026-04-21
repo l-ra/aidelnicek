@@ -35,6 +35,11 @@ class GenerationJobProjector
 
     public static function recoverStaleProcessing(int $maxAgeSec = 300): int
     {
+        $interval = '-' . max(60, $maxAgeSec) . ' seconds';
+        $thresholdExpr = Database::isPostgres()
+            ? '(CURRENT_TIMESTAMP - (?::text)::interval)'
+            : "datetime('now', ?)";
+
         $stmt = Database::get()->prepare(
             "UPDATE generation_jobs
              SET projection_status = 'pending',
@@ -43,9 +48,9 @@ class GenerationJobProjector
              WHERE status = 'done'
                AND projection_status = 'processing'
                AND projection_started_at IS NOT NULL
-               AND projection_started_at < datetime('now', ?)"
+               AND projection_started_at < {$thresholdExpr}"
         );
-        $stmt->execute(['-' . max(60, $maxAgeSec) . ' seconds']);
+        $stmt->execute([$interval]);
         return $stmt->rowCount();
     }
 
