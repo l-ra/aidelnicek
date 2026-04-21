@@ -32,6 +32,28 @@ class Database
     }
 
     /**
+     * Vložení řádku s ignorováním duplicit (UNIQUE). SQLite: INSERT OR IGNORE; PostgreSQL: ON CONFLICT DO NOTHING.
+     *
+     * @param non-empty-string $table
+     * @param non-empty-string $columnsList sloupce oddělené čárkou, např. "week_number, year"
+     * @param non-empty-string $valuesList placeholdery, např. "?, ?"
+     * @param non-empty-string $onConflictColumnList sloupce jedinečného klíče pro ON CONFLICT, např. "week_number, year"
+     */
+    public static function buildInsertOrIgnore(
+        string $table,
+        string $columnsList,
+        string $valuesList,
+        string $onConflictColumnList
+    ): string {
+        if (self::$usePostgres) {
+            return 'INSERT INTO ' . $table . ' (' . $columnsList . ') VALUES (' . $valuesList
+                . ') ON CONFLICT (' . $onConflictColumnList . ') DO NOTHING';
+        }
+
+        return 'INSERT OR IGNORE INTO ' . $table . ' (' . $columnsList . ') VALUES (' . $valuesList . ')';
+    }
+
+    /**
      * PostgreSQL schéma tenanta (search_path). Pouze v PG režimu.
      */
     public static function getPostgresTenantSchema(): string
