@@ -5,6 +5,7 @@ declare(strict_types=1);
 $projectRoot = dirname(__DIR__);
 require $projectRoot . '/vendor/autoload.php';
 
+use Aidelnicek\AdminTableHelper;
 use Aidelnicek\ApplicationDataExport;
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
@@ -499,9 +500,7 @@ $router->post('/admin/table/delete', $requireCsrf('/admin/table', function () {
     }
 
     $db        = Database::get();
-    $tableList = $db->query(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )->fetchAll(PDO::FETCH_COLUMN);
+    $tableList = AdminTableHelper::listTables($db);
 
     $table = $_POST['table'] ?? '';
     $rowid = isset($_POST['rowid']) ? (int) $_POST['rowid'] : 0;
@@ -513,7 +512,13 @@ $router->post('/admin/table/delete', $requireCsrf('/admin/table', function () {
     }
 
     $qt = '"' . str_replace('"', '""', $table) . '"';
-    $db->prepare("DELETE FROM {$qt} WHERE rowid = ?")->execute([$rowid]);
+    $pk = AdminTableHelper::primaryKeyColumn($db, $table);
+    if ($pk === null) {
+        header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&error=invalid'));
+        exit;
+    }
+    $qpk = '"' . str_replace('"', '""', $pk) . '"';
+    $db->prepare("DELETE FROM {$qt} WHERE {$qpk} = ?")->execute([$rowid]);
 
     header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&page=' . $page . '&success=deleted'));
     exit;
@@ -527,9 +532,7 @@ $router->post('/admin/table/clear', $requireCsrf('/admin/table', function () {
     }
 
     $db        = Database::get();
-    $tableList = $db->query(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )->fetchAll(PDO::FETCH_COLUMN);
+    $tableList = AdminTableHelper::listTables($db);
 
     $table = $_POST['table'] ?? '';
     if ($table === '' || !in_array($table, $tableList, true)) {
@@ -552,9 +555,7 @@ $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
     }
 
     $db        = Database::get();
-    $tableList = $db->query(
-        "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-    )->fetchAll(PDO::FETCH_COLUMN);
+    $tableList = AdminTableHelper::listTables($db);
 
     $table = $_POST['table'] ?? '';
     $rowid = isset($_POST['rowid']) ? (int) $_POST['rowid'] : 0;
@@ -567,9 +568,16 @@ $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
 
     $qt = '"' . str_replace('"', '""', $table) . '"';
 
-    // Načtení platných sloupců z PRAGMA — whitelist pro SET klauzuli
+    $pk = AdminTableHelper::primaryKeyColumn($db, $table);
+    if ($pk === null) {
+        header('Location: ' . Url::u('/admin/table?table=' . urlencode($table) . '&error=invalid'));
+        exit;
+    }
+    $qpk = '"' . str_replace('"', '""', $pk) . '"';
+
+    // Načtení platných sloupců — whitelist pro SET klauzuli
     $validColumns = [];
-    foreach ($db->query("PRAGMA table_info({$qt})") as $col) {
+    foreach (AdminTableHelper::listColumnsMeta($db, $table) as $col) {
         $validColumns[] = $col['name'];
     }
 
@@ -580,7 +588,7 @@ $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
             continue;
         }
         $colName = substr($key, 6);
-        if (!in_array($colName, $validColumns, true)) {
+        if (!in_array($colName, $validColumns, true) || $colName === $pk) {
             continue;
         }
         $qc = '"' . str_replace('"', '""', $colName) . '"';
@@ -590,7 +598,7 @@ $router->post('/admin/table/update', $requireCsrf('/admin/table', function () {
 
     if (!empty($setClauses)) {
         $values[] = $rowid;
-        $sql = "UPDATE {$qt} SET " . implode(', ', $setClauses) . " WHERE rowid = ?";
+        $sql = "UPDATE {$qt} SET " . implode(', ', $setClauses) . " WHERE {$qpk} = ?";
         $db->prepare($sql)->execute($values);
     }
 
@@ -782,29 +790,37 @@ $router->post('/admin/llm-logs/data', function () use ($projectRoot) {
         exit;
     }
 
-    $filename = $_POST['filename'] ?? '';
-    if (!preg_match('/^llm_\d{4}-\d{2}-\d{2}\.db$/', $filename)) {
-        header('Content-Type: application/json');
-        echo json_encode(['ok' => false, 'error' => 'Neplatný název souboru.']);
-        exit;
+    $date = trim((string) ($_POST['log_date'] ?? ''));
+    if ($date === '') {
+        $filename = (string) ($_POST['filename'] ?? '');
+        if (preg_match('/^llm_(\d{4}-\d{2}-\d{2})\.db$/', $filename, $m)) {
+            $date = $m[1];
+        }
     }
-
-    $path = Database::getTenantDataDir() . '/' . $filename;
-    if (!file_exists($path)) {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
         header('Content-Type: application/json');
-        echo json_encode(['ok' => false, 'error' => 'Soubor neexistuje.']);
+        echo json_encode(['ok' => false, 'error' => 'Neplatné datum logu.']);
         exit;
     }
 
     header('Content-Type: application/json');
     try {
-        $pdo = new PDO('sqlite:' . $path);
-        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $rows = $pdo->query(
-            'SELECT id, request_at, provider, model, user_id, prompt_system, prompt_user,
-                    response_text, tokens_in, tokens_out, duration_ms, status, error_message
-             FROM llm_log ORDER BY id DESC'
-        )->fetchAll(PDO::FETCH_ASSOC);
+        if (!Database::isPostgres()) {
+            $path = Database::getTenantDataDir() . '/llm_' . $date . '.db';
+            if (!file_exists($path)) {
+                echo json_encode(['ok' => false, 'error' => 'Soubor neexistuje.']);
+                exit;
+            }
+            $pdo = new PDO('sqlite:' . $path);
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $rows = $pdo->query(
+                'SELECT id, request_at, provider, model, user_id, prompt_system, prompt_user,
+                        response_text, tokens_in, tokens_out, duration_ms, status, error_message
+                 FROM llm_log ORDER BY id DESC'
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $rows = Database::fetchLlmLogRowsForDate($date);
+        }
         echo json_encode(['ok' => true, 'rows' => $rows], JSON_UNESCAPED_UNICODE);
     } catch (\Throwable $e) {
         echo json_encode(['ok' => false, 'error' => $e->getMessage()]);

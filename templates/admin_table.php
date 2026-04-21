@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Aidelnicek\AdminTableHelper;
 use Aidelnicek\Auth;
 use Aidelnicek\Csrf;
 use Aidelnicek\Database;
@@ -17,9 +18,7 @@ if (!User::isAdmin((int) $user['id'])) {
 $db = Database::get();
 
 // Načtení seznamu tabulek
-$tableList = $db->query(
-    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-)->fetchAll(PDO::FETCH_COLUMN);
+$tableList = AdminTableHelper::listTables($db);
 
 $perPage    = 25;
 $table      = $_GET['table'] ?? '';
@@ -40,10 +39,8 @@ if ($table !== '' && !in_array($table, $tableList, true)) {
 if ($table !== '') {
     $qt = '"' . str_replace('"', '""', $table) . '"';
 
-    // Sloupce
-    foreach ($db->query("PRAGMA table_info({$qt})") as $col) {
-        $columns[] = $col;
-    }
+    // Sloupce (kompatibilní s PRAGMA table_info: name, pk)
+    $columns = AdminTableHelper::listColumnsMeta($db, $table);
 
     // Celkový počet řádků
     $totalRows  = (int) $db->query("SELECT COUNT(*) FROM {$qt}")->fetchColumn();
@@ -52,7 +49,14 @@ if ($table !== '') {
     $offset     = ($page - 1) * $perPage;
 
     // Data stránky
-    $rows = $db->query("SELECT rowid AS __rowid, * FROM {$qt} LIMIT {$perPage} OFFSET {$offset}")->fetchAll();
+    try {
+        $rows = $db->query(AdminTableHelper::selectPageSql($table, $columns, $perPage, $offset))->fetchAll();
+    } catch (\Throwable $e) {
+        $table = '';
+        $error = $e->getMessage();
+        $columns = [];
+        $rows = [];
+    }
 }
 
 $pageTitle   = 'Prohlížeč tabulek';

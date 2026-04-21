@@ -19,7 +19,7 @@ from database import (
     open_db,
     upsert_output,
 )
-from logger import log_llm_call
+from logger import log_llm_call_async
 
 
 def _build_client() -> AsyncOpenAI:
@@ -113,7 +113,7 @@ async def stream_and_store(
     finally:
         await conn.close()
         duration_ms = int((time.monotonic() - start_ts) * 1000)
-        log_llm_call(
+        await log_llm_call_async(
             provider="openai",
             model=model,
             prompt_system=system_prompt,
@@ -176,7 +176,7 @@ async def complete_sync(
 
     finally:
         duration_ms = int((time.monotonic() - start_ts) * 1000)
-        log_llm_call(
+        await log_llm_call_async(
             provider="openai",
             model=model,
             prompt_system=system_prompt,

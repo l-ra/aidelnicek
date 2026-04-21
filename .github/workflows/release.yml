@@ -162,6 +162,17 @@ jobs:
             --namespace=${{ secrets.K8S_PRODUCTION_NAMESPACE }} \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create PostgreSQL connection secret
+        run: |
+          kubectl create secret generic aidelnicek-pg \
+            --from-literal=PG_SERVER="${{ secrets.PG_SERVER }}" \
+            --from-literal=PG_PORT="${{ secrets.PG_PORT }}" \
+            --from-literal=PG_DATABASE="${{ secrets.PG_DATABASE }}" \
+            --from-literal=PG_USER="${{ secrets.PG_USER }}" \
+            --from-literal=PG_PASS="${{ secrets.PG_PASS }}" \
+            --namespace=${{ secrets.K8S_PRODUCTION_NAMESPACE }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy to Production
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"

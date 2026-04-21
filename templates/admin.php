@@ -8,6 +8,7 @@ $currentUser = \Aidelnicek\Auth::getCurrentUser();
 $db    = \Aidelnicek\Database::get();
 $users = $db->query('SELECT id, name, email FROM users ORDER BY name')->fetchAll(PDO::FETCH_ASSOC);
 $exportSchemaFingerprint = ApplicationDataExport::schemaFingerprint($db);
+$isPostgresDb = \Aidelnicek\Database::isPostgres();
 
 $successCode = $_GET['success'] ?? '';
 $seeded = $successCode === 'seeded';
@@ -97,10 +98,14 @@ ob_start();
         </div>
 
         <div class="admin-card">
-            <h2>Export / import dat (SQLite)</h2>
+            <h2>Export / import dat<?= $isPostgresDb ? ' (PostgreSQL)' : ' (SQLite)' ?></h2>
             <p>
                 Stáhne nebo nahraje <strong>veškerá data této domácnosti</strong> z hlavní databáze.
-                Soubory LLM logů (<code>llm_*.db</code>) nejsou součástí exportu.
+                <?php if ($isPostgresDb): ?>
+                    LLM komunikační logy jsou v tabulce <code>llm_log</code> a nejsou součástí tohoto exportu.
+                <?php else: ?>
+                    Soubory LLM logů (<code>llm_*.db</code>) nejsou součástí exportu.
+                <?php endif; ?>
             </p>
             <dl class="info-list" style="margin-top:0.75rem">
                 <dt>Verze formátu exportu</dt>
@@ -112,7 +117,8 @@ ob_start();
                 <a href="<?= Url::hu('/admin/data-export.json.gz') ?>" class="btn btn-primary">Stáhnout export (.json.gz)</a>
             </p>
             <hr style="margin:1.25rem 0;border:none;border-top:1px solid var(--border-color, #ddd)">
-            <p><strong>Import</strong> načte gzip export, smaže obsah všech tabulek v této databázi a vloží data z exportu.
+            <p><strong>Import</strong> načte gzip export, přepíše obsah všech tabulek aplikace v této databázi a vloží data z exportu
+                (v PostgreSQL se použije <code>TRUNCATE … CASCADE</code> včetně resetu sekvencí).
                 Funguje jen při <strong>shodné verzi formátu</strong> a <strong>shodném otisku schématu</strong> jako výše.</p>
             <form method="post" action="<?= Url::hu('/admin/data-import') ?>" enctype="multipart/form-data"
                   onsubmit="return confirm('Tímto přepíšete všechna data v databázi této domácnosti. Pokračovat?');">
@@ -167,7 +173,7 @@ ob_start();
 
         <div class="admin-card">
             <h2>LLM komunikační logy</h2>
-            <p>Prohlížejte záznamy komunikace s LLM uložené v denních log souborech.</p>
+            <p>Prohlížejte záznamy komunikace s LLM <?= $isPostgresDb ? 'v databázi (podle dne).' : 'v denních log souborech.' ?></p>
             <a href="<?= Url::hu('/admin/llm-logs') ?>" class="btn btn-primary">Zobrazit logy</a>
         </div>
 
@@ -233,7 +239,15 @@ ob_start();
                 <dt>PHP verze</dt>
                 <dd><?= htmlspecialchars(PHP_VERSION) ?></dd>
                 <dt>Databáze</dt>
-                <dd><?= htmlspecialchars(realpath(\Aidelnicek\Database::getPath())) ?></dd>
+                <dd>
+                    <?php if ($isPostgresDb): ?>
+                        PostgreSQL —
+                        <?= htmlspecialchars(\Aidelnicek\PostgresEnv::requireAll()['database']) ?>
+                        / schéma <code><?= htmlspecialchars(\Aidelnicek\Database::getPostgresTenantSchema()) ?></code>
+                    <?php else: ?>
+                        <?= htmlspecialchars(realpath(\Aidelnicek\Database::getPath()) ?: \Aidelnicek\Database::getPath()) ?>
+                    <?php endif; ?>
+                </dd>
                 <dt>Přihlášený admin</dt>
                 <dd><?= htmlspecialchars($currentUser['name'] ?? '—') ?></dd>
             </dl>
