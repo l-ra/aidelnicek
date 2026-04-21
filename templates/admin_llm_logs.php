@@ -17,18 +17,7 @@ if (!User::isAdmin((int) $user['id'])) {
 $pageTitle   = 'LLM logy';
 $currentUser = Auth::getCurrentUser();
 
-// Collect available log files from tenant data/
-$logFiles = [];
-$dataDir  = Database::getTenantDataDir();
-if (is_dir($dataDir)) {
-    foreach (glob($dataDir . '/llm_*.db') as $path) {
-        $basename = basename($path);
-        if (preg_match('/^llm_\d{4}-\d{2}-\d{2}\.db$/', $basename)) {
-            $logFiles[] = $basename;
-        }
-    }
-    rsort($logFiles); // nejnovější první
-}
+$logDates = Database::listLlmLogDates();
 
 ob_start();
 ?>
@@ -38,24 +27,20 @@ ob_start();
         <a href="<?= Url::hu('/admin') ?>" class="btn btn-secondary btn-sm">← Zpět na administraci</a>
     </div>
 
-    <?php if (empty($logFiles)): ?>
+    <?php if (empty($logDates)): ?>
         <div class="alert alert-info llm-logs-empty">
-            Zatím nebyly nalezeny žádné log soubory. Logy se vytváří automaticky při prvním volání LLM.
+            Zatím nebyly nalezeny žádné logy. Logy se vytváří automaticky při prvním volání LLM.
         </div>
     <?php else: ?>
         <div class="admin-card llm-logs-selector">
-            <h2>Výběr log souboru</h2>
+            <h2>Výběr dne</h2>
             <div class="llm-logs-form-row">
                 <div class="form-group">
-                    <label for="llm-log-file">Datum logu</label>
-                    <select id="llm-log-file" class="form-control">
-                        <?php foreach ($logFiles as $f): ?>
-                            <?php
-                            // Extract date from filename: llm_YYYY-MM-DD.db → YYYY-MM-DD
-                            $date = preg_replace('/^llm_(.+)\.db$/', '$1', $f);
-                            ?>
-                            <option value="<?= htmlspecialchars($f) ?>">
-                                <?= htmlspecialchars($date) ?>
+                    <label for="llm-log-date">Datum logu</label>
+                    <select id="llm-log-date" class="form-control">
+                        <?php foreach ($logDates as $d): ?>
+                            <option value="<?= htmlspecialchars($d) ?>">
+                                <?= htmlspecialchars($d) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -118,13 +103,13 @@ ob_start();
     <?php endif; ?>
 </div>
 
-<?php if (!empty($logFiles)): ?>
+<?php if (!empty($logDates)): ?>
 <script>
 (function () {
     var csrfMeta  = document.querySelector('meta[name="csrf-token"]');
     var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
-    var fileSelect   = document.getElementById('llm-log-file');
+    var dateSelect = document.getElementById('llm-log-date');
     var loadBtn      = document.getElementById('llm-logs-load-btn');
     var statusEl     = document.getElementById('llm-logs-status');
     var resultsBox   = document.getElementById('llm-logs-results');
@@ -214,7 +199,7 @@ ob_start();
             var tr = document.createElement('tr');
             var td = document.createElement('td');
             td.colSpan = 11;
-            td.textContent = 'Soubor neobsahuje žádné záznamy.';
+            td.textContent = 'Pro tento den nejsou žádné záznamy.';
             td.classList.add('text-muted');
             tr.appendChild(td);
             tbody.appendChild(tr);
@@ -228,7 +213,6 @@ ob_start();
             tr.appendChild(makeTd(row.id));
             tr.appendChild(makeTd(row.request_at));
 
-            // Provider / model combined cell
             var tdPm = document.createElement('td');
             tdPm.innerHTML = escHtml(row.provider || '–') + '<br><small class="text-muted">' + escHtml(row.model || '–') + '</small>';
             tr.appendChild(tdPm);
@@ -238,7 +222,6 @@ ob_start();
             tr.appendChild(makePreviewTd(row.prompt_user));
             tr.appendChild(makePreviewTd(row.response_text));
 
-            // Tokens
             var tokensVal = (row.tokens_in !== null || row.tokens_out !== null)
                 ? (row.tokens_in ?? '?') + ' / ' + (row.tokens_out ?? '?')
                 : null;
@@ -246,7 +229,6 @@ ob_start();
 
             tr.appendChild(makeTd(row.duration_ms, row.duration_ms === null));
 
-            // Status with color badge
             var tdStatus = document.createElement('td');
             var badge = document.createElement('span');
             badge.textContent = row.status || '–';
@@ -262,8 +244,8 @@ ob_start();
     }
 
     function loadLogs() {
-        var filename = fileSelect.value;
-        if (!filename) return;
+        var logDate = dateSelect.value;
+        if (!logDate) return;
 
         loadBtn.disabled     = true;
         statusEl.textContent = 'Načítám…';
@@ -272,7 +254,7 @@ ob_start();
 
         var fd = new FormData();
         fd.append('csrf_token', csrfToken);
-        fd.append('filename',   filename);
+        fd.append('log_date', logDate);
 
         fetch(<?= json_encode(Url::u('/admin/llm-logs/data'), JSON_UNESCAPED_SLASHES) ?>, {
             method:  'POST',
@@ -298,10 +280,7 @@ ob_start();
             statusEl.className   = 'sql-status sql-status--ok';
             resultsBox.hidden    = false;
 
-            // Extract date from filename
-            var dateMatch = filename.match(/^llm_(.+)\.db$/);
-            var dateStr   = dateMatch ? dateMatch[1] : filename;
-            resultsTitle.textContent = 'Záznamy — ' + dateStr;
+            resultsTitle.textContent = 'Záznamy — ' + logDate;
             resultsCount.textContent = data.rows.length + ' záznamů';
 
             renderRows(data.rows);

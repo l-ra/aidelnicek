@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Aidelnicek;
 
 use PDO;
@@ -9,9 +11,29 @@ class Database
     private const INITIAL_ADMIN_PASSWORD_FILE = 'initial-admin-password.txt';
 
     private static ?PDO $connection = null;
+    /** SQLite: cesta k souboru. PostgreSQL: popisný identifikátor (DSN + schéma). */
     private static string $dbPath = '';
     private static string $dataDir = '';
     private static ?string $activeTenantSlug = null;
+    private static bool $usePostgres = false;
+    private static string $pgSchema = '';
+
+    public static function isPostgres(): bool
+    {
+        return self::$usePostgres;
+    }
+
+    /**
+     * PostgreSQL schéma tenanta (search_path). Pouze v PG režimu.
+     */
+    public static function getPostgresTenantSchema(): string
+    {
+        if (!self::$usePostgres || self::$pgSchema === '') {
+            throw new \RuntimeException('Database: PostgreSQL schéma není k dispozici.');
+        }
+
+        return self::$pgSchema;
+    }
 
     /**
      * Inicializace DB pro jednoho tenanta. Bez $tenantSlug pouze připraví kořen dat (CLI / landing).
@@ -30,6 +52,8 @@ class Database
             self::$activeTenantSlug = null;
             self::$dataDir = '';
             self::$dbPath = '';
+            self::$usePostgres = false;
+            self::$pgSchema = '';
 
             return;
         }
@@ -44,17 +68,49 @@ class Database
 
         self::$activeTenantSlug = $tenantSlug;
         self::$dataDir = Tenant::tenantDataDir($basePath, $tenantSlug);
-        self::$dbPath = self::$dataDir . '/aidelnicek.sqlite';
+
+        if (PostgresEnv::isEnabled()) {
+            self::$usePostgres = true;
+            self::$pgSchema   = self::buildPostgresSchemaName($tenantSlug);
+            $cfg               = PostgresEnv::requireAll();
+            self::$dbPath     = sprintf(
+                'pgsql://%s:%d/%s?schema=%s',
+                $cfg['server'],
+                $cfg['port'],
+                $cfg['database'],
+                self::$pgSchema
+            );
+        } else {
+            self::$usePostgres = false;
+            self::$pgSchema    = '';
+            self::$dbPath      = self::$dataDir . '/aidelnicek.sqlite';
+        }
+
         self::assertTenantStorageWritable();
+    }
+
+    /**
+     * Název schématu v PostgreSQL (max. 63 znaků, bezpečné znaky).
+     */
+    public static function buildPostgresSchemaName(string $slug): string
+    {
+        $slug = strtolower(trim($slug));
+        $base  = 'tenant_' . $slug;
+        if (strlen($base) <= 63) {
+            return $base;
+        }
+
+        return 't_' . substr(sha1($slug), 0, 61);
     }
 
     /**
      * SQLite hlásí „attempt to write a readonly database“, když proces webového serveru
      * nemůže zapisovat do souboru DB nebo do složky tenanta (WAL/-shm soubory).
+     * V PostgreSQL režimu kontrolujeme zapisovatelnost složky tenanta (soubory s klíči atd.).
      */
     private static function assertTenantStorageWritable(): void
     {
-        if (self::$dataDir === '' || self::$dbPath === '') {
+        if (self::$dataDir === '') {
             return;
         }
         if (!is_dir(self::$dataDir)) {
@@ -65,8 +121,13 @@ class Database
         if (!is_writable(self::$dataDir)) {
             throw new \RuntimeException(
                 'Datová složka tenanta není zapisovatelná pro webový server: ' . self::$dataDir
-                . ' (oprávnění musí umožnit zápis kvůli SQLite a režimu WAL).'
             );
+        }
+        if (self::$usePostgres) {
+            return;
+        }
+        if (self::$dbPath === '') {
+            return;
         }
         if (is_file(self::$dbPath) && !is_writable(self::$dbPath)) {
             throw new \RuntimeException(
@@ -88,7 +149,7 @@ class Database
     public static function getPath(): string
     {
         if (self::$dbPath === '') {
-            throw new \RuntimeException('Database: není nastavena cesta k SQLite.');
+            throw new \RuntimeException('Database: není nastaven identifikátor databáze.');
         }
 
         return self::$dbPath;
@@ -96,29 +157,159 @@ class Database
 
     public static function get(): PDO
     {
-        if (self::$dbPath === '') {
+        if (self::$dbPath === '' || self::$activeTenantSlug === null) {
             throw new \RuntimeException('Database: tenant není inicializován.');
         }
 
         if (self::$connection === null) {
-            self::$connection = new PDO(
-                'sqlite:' . self::$dbPath,
-                null,
-                null,
-                [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                ]
-            );
-            // WAL mode allows the Python LLM worker sidecar to write concurrently
-            // while PHP reads (required for SSE streaming progress endpoint).
-            self::$connection->exec('PRAGMA journal_mode=WAL');
-            self::$connection->exec('PRAGMA foreign_keys = ON');
+            if (self::$usePostgres) {
+                $cfg = PostgresEnv::requireAll();
+                $dsn = sprintf(
+                    'pgsql:host=%s;port=%d;dbname=%s',
+                    $cfg['server'],
+                    $cfg['port'],
+                    $cfg['database']
+                );
+                self::$connection = new PDO(
+                    $dsn,
+                    $cfg['user'],
+                    $cfg['password'],
+                    [
+                        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    ]
+                );
+                self::$connection->exec('SET client_encoding TO UTF8');
+                self::ensurePostgresTenantSchema(self::$connection, self::$pgSchema);
+                self::$connection->exec(
+                    'SET search_path TO ' . self::quotePgIdent(self::$pgSchema) . ', public'
+                );
+            } else {
+                self::$connection = new PDO(
+                    'sqlite:' . self::$dbPath,
+                    null,
+                    null,
+                    [
+                        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    ]
+                );
+                self::$connection->exec('PRAGMA journal_mode=WAL');
+                self::$connection->exec('PRAGMA foreign_keys = ON');
+            }
+
             self::runMigrations();
+            if (self::$usePostgres) {
+                self::ensurePostgresLlmLogPartitionedTable(self::$connection);
+            }
             self::ensureAdminUser();
         }
 
         return self::$connection;
+    }
+
+    /**
+     * Zajistí partitiony llm_log pro blízké měsíce (volat před INSERT, např. při přechodu měsíce).
+     */
+    public static function touchLlmLogPartitions(): void
+    {
+        if (!self::$usePostgres || self::$connection === null || self::$pgSchema === '') {
+            return;
+        }
+        self::ensurePostgresLlmLogPartitionsForUpcomingMonths(self::$connection, self::$pgSchema, 3);
+    }
+
+    private static function ensurePostgresTenantSchema(PDO $db, string $schema): void
+    {
+        $q = self::quotePgIdent($schema);
+        $db->exec('CREATE SCHEMA IF NOT EXISTS ' . $q);
+    }
+
+    private static function quotePgIdent(string $ident): string
+    {
+        if ($ident === '' || preg_match('/[^a-z0-9_]/', $ident) === 1) {
+            throw new \InvalidArgumentException('Neplatný identifikátor PostgreSQL schématu.');
+        }
+
+        return '"' . str_replace('"', '""', $ident) . '"';
+    }
+
+    /**
+     * Jedna tabulka llm_log v tenant schématu, partitionovaná podle měsíce (log_date).
+     */
+    private static function ensurePostgresLlmLogPartitionedTable(PDO $db): void
+    {
+        $schema = self::$pgSchema;
+        $exists  = (int) $db->query(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = " . $db->quote($schema) . "
+               AND table_name = 'llm_log'"
+        )->fetchColumn();
+        if ($exists > 0) {
+            self::ensurePostgresLlmLogPartitionsForUpcomingMonths($db, $schema, 3);
+
+            return;
+        }
+
+        $db->exec(
+            'CREATE TABLE llm_log (
+                id BIGSERIAL,
+                provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                user_id BIGINT,
+                prompt_system TEXT,
+                prompt_user TEXT NOT NULL,
+                response_text TEXT,
+                tokens_in INTEGER,
+                tokens_out INTEGER,
+                request_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                duration_ms INTEGER,
+                status TEXT NOT NULL DEFAULT \'ok\',
+                error_message TEXT,
+                PRIMARY KEY (id, request_at)
+            ) PARTITION BY RANGE (request_at)'
+        );
+
+        self::ensurePostgresLlmLogPartitionsForUpcomingMonths($db, $schema, 3);
+    }
+
+    /**
+     * Zajistí existenci měsíčních partition tabulek llm_log (aktuální + následující měsíce).
+     */
+    private static function ensurePostgresLlmLogPartitionsForUpcomingMonths(
+        PDO $db,
+        string $schema,
+        int $monthsAhead
+    ): void {
+        $tz    = new \DateTimeZone('UTC');
+        $start = new \DateTimeImmutable('first day of this month', $tz);
+        for ($i = 0; $i <= max(0, $monthsAhead); $i++) {
+            $monthStart = $start->modify('+' . $i . ' months');
+            $monthEnd   = $monthStart->modify('+1 month');
+            $suffix     = $monthStart->format('Y_m');
+            $partName   = 'llm_log_p_' . $suffix;
+            if (strlen($partName) > 63) {
+                $partName = 'llm_p_' . substr(sha1($suffix), 0, 56);
+            }
+            $from = $monthStart->format('Y-m-d') . ' 00:00:00+00';
+            $to   = $monthEnd->format('Y-m-d') . ' 00:00:00+00';
+
+            $exists = (int) $db->query(
+                "SELECT COUNT(*) FROM pg_catalog.pg_class c
+                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = " . $db->quote($schema) . "
+                   AND c.relname = " . $db->quote($partName)
+            )->fetchColumn();
+            if ($exists > 0) {
+                continue;
+            }
+
+            $qPart = self::quotePgIdent($partName);
+            $db->exec(
+                'CREATE TABLE ' . $qPart . ' PARTITION OF llm_log FOR VALUES FROM (\''
+                . $from . '\') TO (\'' . $to . '\')'
+            );
+        }
     }
 
     /**
@@ -137,340 +328,148 @@ class Database
 
     private static function runMigrations(): void
     {
-        $migrations = [
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS migrations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE NOT NULL,
-                applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                gender TEXT,
-                age INTEGER,
-                body_type TEXT,
-                dietary_notes TEXT,
-                is_admin INTEGER DEFAULT 0,
-                push_subscription TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS weeks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                week_number INTEGER NOT NULL,
-                year INTEGER NOT NULL,
-                generated_at DATETIME,
-                UNIQUE(week_number, year)
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS meal_plans (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                week_id INTEGER NOT NULL REFERENCES weeks(id),
-                day_of_week INTEGER NOT NULL,
-                meal_type TEXT NOT NULL,
-                alternative INTEGER NOT NULL,
-                meal_name TEXT NOT NULL,
-                description TEXT,
-                ingredients TEXT,
-                canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id),
-                pairing_key TEXT,
-                is_chosen INTEGER DEFAULT 0,
-                is_eaten INTEGER DEFAULT 0,
-                UNIQUE(user_id, week_id, day_of_week, meal_type, alternative)
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS shopping_list_items (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                week_id INTEGER NOT NULL REFERENCES weeks(id),
-                name TEXT NOT NULL,
-                quantity REAL,
-                unit TEXT,
-                category TEXT,
-                is_purchased INTEGER DEFAULT 0,
-                purchased_by INTEGER REFERENCES users(id),
-                added_manually INTEGER DEFAULT 0,
-                added_by INTEGER REFERENCES users(id)
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS meal_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                meal_name TEXT NOT NULL,
-                times_offered INTEGER DEFAULT 0,
-                times_chosen INTEGER DEFAULT 0,
-                times_eaten INTEGER DEFAULT 0,
-                last_offered DATETIME
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS notifications_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                sent_at DATETIME,
-                type TEXT,
-                status TEXT
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS remember_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                token_hash TEXT NOT NULL,
-                expires_at DATETIME NOT NULL
-            );
-            SQL,
-            // M3: unique index on meal_history so ON CONFLICT upserts work
-            <<<'SQL'
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_meal_history_user_meal
-                ON meal_history(user_id, meal_name);
-            SQL,
-            // M6: výška, váha, cíl jídelníčku na profilu uživatele
-            <<<'SQL'
-            ALTER TABLE users ADD COLUMN height INTEGER;
-            SQL,
-            <<<'SQL'
-            ALTER TABLE users ADD COLUMN weight REAL;
-            SQL,
-            <<<'SQL'
-            ALTER TABLE users ADD COLUMN diet_goal TEXT;
-            SQL,
-            // M7: sledování průběhu generování pro Python LLM worker sidecar
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS generation_jobs (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id       INTEGER NOT NULL,
-                week_id       INTEGER NOT NULL,
-                status        TEXT    NOT NULL DEFAULT 'pending',
-                progress_text TEXT    NOT NULL DEFAULT '',
-                chunk_count   INTEGER NOT NULL DEFAULT 0,
-                created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-                started_at    DATETIME,
-                finished_at   DATETIME,
-                error_message TEXT
-            );
-            SQL,
-            // M9: sdílené LLM návrhy jídelníčků a recepty napříč uživateli
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS llm_meal_proposals (
-                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
-                week_id            INTEGER NOT NULL REFERENCES weeks(id),
-                generation_job_id  INTEGER REFERENCES generation_jobs(id),
-                reference_user_id  INTEGER NOT NULL REFERENCES users(id),
-                llm_model          TEXT,
-                created_at         DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS llm_proposal_meals (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                proposal_id  INTEGER NOT NULL REFERENCES llm_meal_proposals(id) ON DELETE CASCADE,
-                day_of_week  INTEGER NOT NULL,
-                meal_type    TEXT NOT NULL,
-                alternative  INTEGER NOT NULL,
-                meal_name    TEXT NOT NULL,
-                description  TEXT,
-                ingredients  TEXT NOT NULL,
-                canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id),
-                pairing_key  TEXT,
-                UNIQUE(proposal_id, day_of_week, meal_type, alternative)
-            );
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS meal_recipes (
-                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-                proposal_meal_id     INTEGER NOT NULL UNIQUE REFERENCES llm_proposal_meals(id) ON DELETE CASCADE,
-                generated_by_user_id INTEGER REFERENCES users(id),
-                model                TEXT,
-                recipe_text          TEXT NOT NULL,
-                created_at           DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at           DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            SQL,
-            <<<'SQL'
-            ALTER TABLE meal_plans ADD COLUMN proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id);
-            SQL,
-            <<<'SQL'
-            ALTER TABLE meal_plans ADD COLUMN portion_factor REAL NOT NULL DEFAULT 1.0;
-            SQL,
-            <<<'SQL'
-            ALTER TABLE meal_plans ADD COLUMN canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id);
-            SQL,
-            <<<'SQL'
-            ALTER TABLE meal_plans ADD COLUMN pairing_key TEXT;
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_meal_plans_proposal_meal_id
-                ON meal_plans(proposal_meal_id);
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_meal_plans_canonical_proposal_meal_id
-                ON meal_plans(canonical_proposal_meal_id);
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_meal_plans_pairing_key
-                ON meal_plans(pairing_key);
-            SQL,
-            <<<'SQL'
-            ALTER TABLE llm_proposal_meals ADD COLUMN canonical_proposal_meal_id INTEGER REFERENCES llm_proposal_meals(id);
-            SQL,
-            <<<'SQL'
-            ALTER TABLE llm_proposal_meals ADD COLUMN pairing_key TEXT;
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_llm_proposal_meals_canonical_proposal_meal_id
-                ON llm_proposal_meals(canonical_proposal_meal_id);
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_llm_proposal_meals_pairing_key
-                ON llm_proposal_meals(pairing_key);
-            SQL,
-            // M10: sjednocená LLM job orchestrace + chunk/output tabulky
-            <<<'SQL'
-            ALTER TABLE generation_jobs ADD COLUMN job_type TEXT NOT NULL DEFAULT 'mealplan_generate';
-            SQL,
-            <<<'SQL'
-            ALTER TABLE generation_jobs ADD COLUMN mode TEXT NOT NULL DEFAULT 'async';
-            SQL,
-            <<<'SQL'
-            ALTER TABLE generation_jobs ADD COLUMN input_payload TEXT NOT NULL DEFAULT '{}';
-            SQL,
-            <<<'SQL'
-            ALTER TABLE generation_jobs ADD COLUMN projection_status TEXT NOT NULL DEFAULT 'pending';
-            SQL,
-            <<<'SQL'
-            ALTER TABLE generation_jobs ADD COLUMN projection_error_message TEXT;
-            SQL,
-            <<<'SQL'
-            ALTER TABLE generation_jobs ADD COLUMN projection_started_at DATETIME;
-            SQL,
-            <<<'SQL'
-            ALTER TABLE generation_jobs ADD COLUMN projection_finished_at DATETIME;
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS generation_job_chunks (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                job_id     INTEGER NOT NULL REFERENCES generation_jobs(id) ON DELETE CASCADE,
-                seq_no     INTEGER NOT NULL,
-                chunk_text TEXT    NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(job_id, seq_no)
-            );
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_generation_job_chunks_job_seq
-                ON generation_job_chunks(job_id, seq_no);
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS generation_job_outputs (
-                job_id       INTEGER PRIMARY KEY REFERENCES generation_jobs(id) ON DELETE CASCADE,
-                provider     TEXT    NOT NULL DEFAULT 'openai',
-                model        TEXT    NOT NULL,
-                raw_text     TEXT    NOT NULL,
-                parsed_json  TEXT,
-                tokens_in    INTEGER,
-                tokens_out   INTEGER,
-                duration_ms  INTEGER,
-                created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_generation_jobs_status_projection
-                ON generation_jobs(status, projection_status);
-            SQL,
-            <<<'SQL'
-            CREATE TABLE IF NOT EXISTS email_change_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL REFERENCES users(id),
-                new_email TEXT NOT NULL,
-                old_email TEXT NOT NULL,
-                requested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                expires_at DATETIME NOT NULL,
-                consumed_at DATETIME
-            );
-            SQL,
-            <<<'SQL'
-            CREATE INDEX IF NOT EXISTS idx_email_change_user_pending
-                ON email_change_requests(user_id, consumed_at);
-            SQL,
-            // M11: doplnění canonical identity i pro starší data bez párování
-            <<<'SQL'
-            UPDATE llm_proposal_meals
-            SET canonical_proposal_meal_id = id
-            WHERE canonical_proposal_meal_id IS NULL;
-            SQL,
-            <<<'SQL'
-            UPDATE meal_plans
-            SET canonical_proposal_meal_id = proposal_meal_id
-            WHERE canonical_proposal_meal_id IS NULL
-              AND proposal_meal_id IS NOT NULL;
-            SQL,
-        ];
+        $db      = self::$connection;
+        $isPg    = self::$usePostgres;
+        $paired  = DatabaseMigrations::pairedSteps();
+        $firstSql = $isPg ? $paired[0]['pgsql'] : $paired[0]['sqlite'];
+        $db->exec($firstSql);
 
-        $db = self::$connection;
-
-        // Bootstrap the tracking table before the loop queries it.
-        // Without this, the very first iteration would SELECT FROM a table that does not exist yet.
-        $db->exec('CREATE TABLE IF NOT EXISTS migrations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )');
-
-        foreach ($migrations as $sql) {
-            $name = self::migrationName($sql);
-            $stmt = $db->prepare('SELECT 1 FROM migrations WHERE name = ?');
+        foreach ($paired as $step) {
+            $sqliteSql = $step['sqlite'];
+            $sql       = $isPg ? $step['pgsql'] : $sqliteSql;
+            $name      = self::migrationName($sqliteSql);
+            $stmt      = $db->prepare('SELECT 1 FROM migrations WHERE name = ?');
             $stmt->execute([$name]);
-            if ($stmt->fetch() === false) {
-                try {
-                    $db->exec($sql);
-                } catch (\Throwable $e) {
-                    $message = mb_strtolower($e->getMessage());
-                    // Worker může vytvořit novější schéma dříve než PHP migrace.
-                    // V takovém případě je "duplicate column name" bezpečný no-op.
-                    if (!str_contains($message, 'duplicate column name')) {
-                        throw $e;
-                    }
-                }
-                $db->prepare('INSERT INTO migrations (name) VALUES (?)')->execute([$name]);
+            if ($stmt->fetch() !== false) {
+                continue;
             }
+            try {
+                $db->exec($sql);
+            } catch (\Throwable $e) {
+                if (!self::isBenignMigrationConflict($e, $isPg)) {
+                    throw $e;
+                }
+            }
+            $db->prepare('INSERT INTO migrations (name) VALUES (?)')->execute([$name]);
         }
     }
 
-    /**
-     * Poziční názvy migration_1, migration_2, ... se rozbijí při vložení nové migrace doprostřed pole,
-     * protože starší databáze pak považují jiný SQL blok za už aplikovaný. Stabilní hash názvu zajistí,
-     * že se chybějící ALTER/UPDATE kroky doběhnou i na existujících SQLite souborech.
-     */
-    private static function migrationName(string $sql): string
+    private static function isBenignMigrationConflict(\Throwable $e, bool $isPostgres): bool
     {
-        $normalizedSql = preg_replace('/\s+/', ' ', trim($sql)) ?? trim($sql);
+        $message = mb_strtolower($e->getMessage());
+        if (!$isPostgres) {
+            return str_contains($message, 'duplicate column name');
+        }
+        if (str_contains($message, 'already exists')) {
+            return true;
+        }
+        $state = $e instanceof \PDOException ? ($e->errorInfo[0] ?? '') : '';
+
+        return $state === '42P07' // duplicate_table
+            || $state === '42710' // duplicate_object
+            || $state === '42701'; // duplicate_column
+    }
+
+    /**
+     * Stabilní hash názvu migrace — počítá se vždy z SQLite SQL (shoda s existujícími SQLite DB).
+     */
+    private static function migrationName(string $sqliteSql): string
+    {
+        $normalizedSql = preg_replace('/\s+/', ' ', trim($sqliteSql)) ?? trim($sqliteSql);
 
         return 'migration_' . substr(sha1($normalizedSql), 0, 16);
     }
 
     /**
-     * Zajistí existenci výchozího administrátorského účtu.
+     * Dny, pro které existují LLM logy (SQLite: soubory, PostgreSQL: řádky v llm_log).
      *
-     * Pokud v databázi neexistuje žádný is_admin = 1, vytvoří admin@localhost
-     * s náhodným heslem. Heslo se zapíše jen do souboru initial-admin-password.txt
-     * v datové složce tenanta (a stručně do error_log).
+     * @return list<string> formát YYYY-MM-DD, seřazeno sestupně
      */
+    public static function listLlmLogDates(): array
+    {
+        if (self::$dataDir === '') {
+            throw new \RuntimeException('Database: tenant není inicializován.');
+        }
+        if (self::$usePostgres) {
+            $pdo = self::get();
+            $stmt = $pdo->query(
+                "SELECT DISTINCT (request_at AT TIME ZONE 'UTC')::date AS d
+                 FROM llm_log
+                 ORDER BY 1 DESC"
+            );
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
+
+            /** @var list<string> $out */
+            $out = [];
+            foreach ($rows as $r) {
+                if ($r !== null && $r !== '') {
+                    $out[] = (string) $r;
+                }
+            }
+
+            return $out;
+        }
+
+        /** @var list<string> $logFiles */
+        $logFiles = [];
+        if (is_dir(self::$dataDir)) {
+            foreach (glob(self::$dataDir . '/llm_*.db') ?: [] as $path) {
+                $basename = basename($path);
+                if (preg_match('/^llm_(\d{4}-\d{2}-\d{2})\.db$/', $basename, $m)) {
+                    $logFiles[] = $m[1];
+                }
+            }
+        }
+        rsort($logFiles, SORT_STRING);
+
+        return $logFiles;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public static function fetchLlmLogRowsForDate(string $date): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            throw new \InvalidArgumentException('Neplatné datum logu.');
+        }
+        if (self::$dataDir === '') {
+            throw new \RuntimeException('Database: tenant není inicializován.');
+        }
+        if (self::$usePostgres) {
+            $pdo = self::get();
+            $stmt = $pdo->prepare(
+                'SELECT id,
+                        to_char(request_at AT TIME ZONE \'UTC\', \'YYYY-MM-DD HH24:MI:SS\') AS request_at,
+                        provider, model, user_id, prompt_system, prompt_user, response_text,
+                        tokens_in, tokens_out, duration_ms, status, error_message
+                 FROM llm_log
+                 WHERE (request_at AT TIME ZONE \'UTC\')::date = ?::date
+                 ORDER BY id DESC'
+            );
+            $stmt->execute([$date]);
+
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            return $rows !== false ? $rows : [];
+        }
+
+        $path = self::$dataDir . '/llm_' . $date . '.db';
+        if (!is_file($path)) {
+            return [];
+        }
+        $pdo = new PDO('sqlite:' . $path, null, null, [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]);
+
+        return $pdo->query(
+            'SELECT id, request_at, provider, model, user_id, prompt_system, prompt_user,
+                    response_text, tokens_in, tokens_out, duration_ms, status, error_message
+             FROM llm_log ORDER BY id DESC'
+        )->fetchAll();
+    }
+
     private static function ensureAdminUser(): void
     {
         $db = self::$connection;
@@ -480,7 +479,6 @@ class Database
             return;
         }
 
-        // Náhodné heslo: 16 čitelných znaků z base64 bez padding
         $password = rtrim(strtr(base64_encode(random_bytes(12)), '+/', '-_'), '=');
         $hash     = password_hash($password, PASSWORD_DEFAULT);
 

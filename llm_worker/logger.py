@@ -1,19 +1,28 @@
 """
-LLM call logging — writes per-day SQLite files mirroring PHP LlmLogger.
-
-File path: same data directory as aidelnicek.sqlite for the tenant, named llm_YYYY-MM-DD.db
-Table structure matches PHP LlmLogger schema so PHP /admin/llm-logs can display
-records from both PHP and Python callers.
+LLM call logging — SQLite per-day files or PostgreSQL partitioned llm_log in tenant schema.
 """
 
 import os
+import sqlite3
 from datetime import datetime, timezone
 
-from database import LEGACY_DB_PATH, sqlite_path_for_tenant
+from database import (
+    LEGACY_DB_PATH,
+    _ensure_pg_llm_partitions,
+    _pg_connect_kwargs,
+    _pg_schema_for_tenant,
+    _use_postgres,
+    sqlite_path_for_tenant,
+    validate_tenant_id,
+)
+
+try:
+    import asyncpg  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover
+    asyncpg = None  # type: ignore[assignment]
 
 
-def _log_db_path(tenant_id: str | None = None) -> str:
-    """Return today's log file path in the same directory as the main SQLite DB."""
+def _log_db_path_sqlite(tenant_id: str | None = None) -> str:
     if tenant_id is not None and tenant_id.strip() != "":
         db_path = sqlite_path_for_tenant(tenant_id)
     else:
@@ -23,51 +32,45 @@ def _log_db_path(tenant_id: str | None = None) -> str:
     return os.path.join(data_dir, f"llm_{today}.db")
 
 
-def _ensure_schema(conn) -> None:
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS llm_log (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            provider       TEXT    NOT NULL,
-            model          TEXT    NOT NULL,
-            user_id        INTEGER,
-            prompt_system  TEXT,
-            prompt_user    TEXT    NOT NULL,
-            response_text  TEXT,
-            tokens_in      INTEGER,
-            tokens_out     INTEGER,
-            request_at     TEXT    NOT NULL,
-            duration_ms    INTEGER,
-            status         TEXT    NOT NULL DEFAULT 'ok',
-            error_message  TEXT
-        )
-    """)
-    conn.commit()
-
-
-def log_llm_call(
+def _log_sqlite_sync(
     provider: str,
     model: str,
     prompt_system: str,
     prompt_user: str,
-    response_text: str | None = None,
-    tokens_in: int | None = None,
-    tokens_out: int | None = None,
-    request_at: str | None = None,
-    duration_ms: int | None = None,
-    status: str = "ok",
-    error_message: str | None = None,
-    user_id: int | None = None,
-    tenant_id: str | None = None,
+    response_text: str | None,
+    tokens_in: int | None,
+    tokens_out: int | None,
+    request_at: str | None,
+    duration_ms: int | None,
+    status: str,
+    error_message: str | None,
+    user_id: int | None,
+    tenant_id: str | None,
 ) -> None:
-    """Write an LLM call record to today's log SQLite file. Silently ignores errors."""
+    path = _log_db_path_sqlite(tenant_id)
+    is_new = not os.path.exists(path)
+    conn = sqlite3.connect(path)
     try:
-        import sqlite3
-
-        path = _log_db_path(tenant_id)
-        is_new = not os.path.exists(path)
-        conn = sqlite3.connect(path)
         if is_new:
-            _ensure_schema(conn)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS llm_log (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provider       TEXT    NOT NULL,
+                    model          TEXT    NOT NULL,
+                    user_id        INTEGER,
+                    prompt_system  TEXT,
+                    prompt_user    TEXT    NOT NULL,
+                    response_text  TEXT,
+                    tokens_in      INTEGER,
+                    tokens_out     INTEGER,
+                    request_at     TEXT    NOT NULL,
+                    duration_ms    INTEGER,
+                    status         TEXT    NOT NULL DEFAULT 'ok',
+                    error_message  TEXT
+                )
+            """
+            )
         conn.execute(
             """
             INSERT INTO llm_log
@@ -91,6 +94,114 @@ def log_llm_call(
             ),
         )
         conn.commit()
+    finally:
         conn.close()
+
+
+async def log_llm_call_async(
+    provider: str,
+    model: str,
+    prompt_system: str,
+    prompt_user: str,
+    response_text: str | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    request_at: str | None = None,
+    duration_ms: int | None = None,
+    status: str = "ok",
+    error_message: str | None = None,
+    user_id: int | None = None,
+    tenant_id: str | None = None,
+) -> None:
+    """Awaitable LLM log write."""
+    try:
+        if _use_postgres():
+            if asyncpg is None or not tenant_id or not tenant_id.strip():
+                return
+            tid = validate_tenant_id(tenant_id)
+            schema = _pg_schema_for_tenant(tid)
+            conn = await asyncpg.connect(**_pg_connect_kwargs())
+            try:
+                await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+                await conn.execute(f'SET search_path TO "{schema}", public')
+                await _ensure_pg_llm_partitions(conn, schema)
+                ra = request_at or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") + "+00"
+                await conn.execute(
+                    """
+                    INSERT INTO llm_log
+                        (provider, model, user_id, prompt_system, prompt_user, response_text,
+                         tokens_in, tokens_out, request_at, duration_ms, status, error_message)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz, $10, $11, $12)
+                    """,
+                    provider,
+                    model,
+                    user_id,
+                    prompt_system,
+                    prompt_user,
+                    response_text,
+                    tokens_in,
+                    tokens_out,
+                    ra,
+                    duration_ms,
+                    status,
+                    error_message,
+                )
+            finally:
+                await conn.close()
+            return
+
+        _log_sqlite_sync(
+            provider,
+            model,
+            prompt_system,
+            prompt_user,
+            response_text,
+            tokens_in,
+            tokens_out,
+            request_at,
+            duration_ms,
+            status,
+            error_message,
+            user_id,
+            tenant_id,
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def log_llm_call(
+    provider: str,
+    model: str,
+    prompt_system: str,
+    prompt_user: str,
+    response_text: str | None = None,
+    tokens_in: int | None = None,
+    tokens_out: int | None = None,
+    request_at: str | None = None,
+    duration_ms: int | None = None,
+    status: str = "ok",
+    error_message: str | None = None,
+    user_id: int | None = None,
+    tenant_id: str | None = None,
+) -> None:
+    """Sync API: SQLite only. V PostgreSQL režimu použijte await log_llm_call_async()."""
+    try:
+        if _use_postgres():
+            return
+        _log_sqlite_sync(
+            provider,
+            model,
+            prompt_system,
+            prompt_user,
+            response_text,
+            tokens_in,
+            tokens_out,
+            request_at,
+            duration_ms,
+            status,
+            error_message,
+            user_id,
+            tenant_id,
+        )
     except Exception:  # noqa: BLE001
         pass

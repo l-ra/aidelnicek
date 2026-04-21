@@ -39,6 +39,9 @@ spec:
             - secretRef:
                 name: {{ include "aidelnicek.fullname" . }}-mailer
                 optional: true
+            - secretRef:
+                name: {{ include "aidelnicek.fullname" . }}-pg
+                optional: true
           env:
             - name: LLM_MAX_COMPLETION_TOKENS
               value: {{ .Values.llm.maxCompletionTokens | quote }}
@@ -62,6 +65,9 @@ spec:
             - secretRef:
                 name: {{ include "aidelnicek.fullname" . }}-llm
                 optional: true
+            - secretRef:
+                name: {{ include "aidelnicek.fullname" . }}-pg
+                optional: true
           env:
             - name: LLM_MAX_COMPLETION_TOKENS
               value: {{ .Values.llm.maxCompletionTokens | quote }}
@@ -77,6 +83,9 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "aidelnicek.fullname" . }}-llm
+                optional: true
+            - secretRef:
+                name: {{ include "aidelnicek.fullname" . }}-pg
                 optional: true
           env:
             - name: LLM_MAX_COMPLETION_TOKENS

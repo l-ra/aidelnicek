@@ -7,7 +7,8 @@ namespace Aidelnicek;
 use PDO;
 
 /**
- * Export / import dat hlavní SQLite databáze tenanta (bez LLM denních logů v llm_*.db).
+ * Export / import dat hlavní databáze tenanta (SQLite soubor nebo PostgreSQL schéma).
+ * LLM komunikační logy jsou mimo tento export (SQLite: llm_*.db, PostgreSQL: tabulka llm_log).
  */
 final class ApplicationDataExport
 {
@@ -23,10 +24,7 @@ final class ApplicationDataExport
         $tables = self::listDataTables($db);
         $parts  = [];
         foreach ($tables as $table) {
-            $cols = [];
-            foreach ($db->query('PRAGMA table_info(' . self::quoteIdent($table) . ')') as $row) {
-                $cols[] = (string) ($row['name'] ?? '');
-            }
+            $cols = self::listTableColumns($db, $table);
             sort($cols, SORT_STRING);
             $parts[] = $table . ':' . implode(',', $cols);
         }
@@ -40,11 +38,26 @@ final class ApplicationDataExport
      */
     public static function listDataTables(PDO $db): array
     {
-        $stmt = $db->query(
-            "SELECT name FROM sqlite_master
-             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-             ORDER BY name"
-        );
+        if (Database::isPostgres()) {
+            $stmt = $db->query(
+                "SELECT c.relname AS table_name
+                 FROM pg_catalog.pg_class c
+                 JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = current_schema()
+                   AND c.relkind IN ('r', 'p')
+                   AND NOT EXISTS (
+                       SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid
+                   )
+                   AND c.relname <> 'llm_log'
+                 ORDER BY c.relname"
+            );
+        } else {
+            $stmt = $db->query(
+                "SELECT name FROM sqlite_master
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                 ORDER BY name"
+            );
+        }
         $names = $stmt ? $stmt->fetchAll(PDO::FETCH_COLUMN) : [];
         if (!is_array($names)) {
             return [];
@@ -55,6 +68,39 @@ final class ApplicationDataExport
         foreach ($names as $n) {
             if (is_string($n) && $n !== '') {
                 $out[] = $n;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function listTableColumns(PDO $db, string $table): array
+    {
+        $qt = self::quoteIdent($table);
+        if (Database::isPostgres()) {
+            $stmt = $db->prepare(
+                'SELECT column_name FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = ?
+                 ORDER BY ordinal_position'
+            );
+            $stmt->execute([$table]);
+            $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        } else {
+            $stmt  = $db->query('PRAGMA table_info(' . $qt . ')');
+            $rows  = [];
+            foreach ($stmt ?: [] as $col) {
+                $rows[] = (string) ($col['name'] ?? '');
+            }
+        }
+
+        /** @var list<string> $out */
+        $out = [];
+        foreach ($rows as $c) {
+            if (is_string($c) && $c !== '') {
+                $out[] = $c;
             }
         }
 
@@ -145,15 +191,26 @@ final class ApplicationDataExport
             return ['ok' => false, 'error' => 'Množina tabulek v exportu neodpovídá databázi.'];
         }
 
-        $rowsImported  = 0;
-        $tablesTouched = 0;
+        $rowsImported   = 0;
+        $tablesTouched  = 0;
+        $isPostgres     = Database::isPostgres();
 
-        $db->exec('PRAGMA foreign_keys = OFF');
+        if (!$isPostgres) {
+            $db->exec('PRAGMA foreign_keys = OFF');
+        }
+
         try {
             $db->beginTransaction();
+            if ($isPostgres) {
+                $quoted = array_map(static fn (string $t) => self::quoteIdent($t), $expectedTables);
+                $db->exec('TRUNCATE TABLE ' . implode(', ', $quoted) . ' RESTART IDENTITY CASCADE');
+            } else {
+                foreach ($expectedTables as $table) {
+                    $db->exec('DELETE FROM ' . self::quoteIdent($table));
+                }
+            }
+
             foreach ($expectedTables as $table) {
-                $qt = self::quoteIdent($table);
-                $db->exec('DELETE FROM ' . $qt);
                 $rows = $tablesPayload[$table];
                 if (!is_array($rows)) {
                     throw new \InvalidArgumentException('Tabulka ' . $table . ': očekáno pole řádků.');
@@ -171,11 +228,16 @@ final class ApplicationDataExport
             if ($db->inTransaction()) {
                 $db->rollBack();
             }
-            $db->exec('PRAGMA foreign_keys = ON');
+            if (!$isPostgres) {
+                $db->exec('PRAGMA foreign_keys = ON');
+            }
 
             return ['ok' => false, 'error' => $e->getMessage()];
         }
-        $db->exec('PRAGMA foreign_keys = ON');
+
+        if (!$isPostgres) {
+            $db->exec('PRAGMA foreign_keys = ON');
+        }
 
         return [
             'ok'               => true,
@@ -191,19 +253,15 @@ final class ApplicationDataExport
     {
         $qt = self::quoteIdent($table);
 
-        $colStmt = $db->query('PRAGMA table_info(' . $qt . ')');
-        $columns = [];
-        foreach ($colStmt ?: [] as $col) {
-            $columns[] = (string) ($col['name'] ?? '');
-        }
+        $columns = self::listTableColumns($db, $table);
         if ($columns === []) {
             throw new \InvalidArgumentException('Tabulka ' . $table . ' nemá sloupce.');
         }
 
-        $qcols = array_map(static fn (string $c) => self::quoteIdent($c), $columns);
+        $qcols        = array_map(static fn (string $c) => self::quoteIdent($c), $columns);
         $placeholders = '(' . implode(', ', array_fill(0, count($columns), '?')) . ')';
-        $sql = 'INSERT INTO ' . $qt . ' (' . implode(', ', $qcols) . ') VALUES ' . $placeholders;
-        $stmt = $db->prepare($sql);
+        $sql          = 'INSERT INTO ' . $qt . ' (' . implode(', ', $qcols) . ') VALUES ' . $placeholders;
+        $stmt         = $db->prepare($sql);
 
         foreach ($rows as $idx => $row) {
             if (!is_array($row)) {
