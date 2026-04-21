@@ -30,7 +30,8 @@ final class PostgresEnv
                 'PostgreSQL režim: proměnná PG_PASS musí být nastavena (může být prázdný řetězec, pokud databáze nevyžaduje heslo).'
             );
         }
-        $pass = (string) getenv('PG_PASS');
+        // Trim: častý problém po kopírování do secretů (mezera / newline na konci).
+        $pass = trim((string) getenv('PG_PASS'));
         $portStr = self::getRaw('PG_PORT');
         if ($portStr === null || trim($portStr) === '') {
             throw new \RuntimeException('PostgreSQL režim: chybí povinná proměnná PG_PORT.');
