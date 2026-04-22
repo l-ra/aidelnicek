@@ -234,6 +234,7 @@ class MealPlan
             return $row;
         }
 
+        Database::ensurePostgresIdSequenceSynced('weeks');
         $db->prepare(
             Database::buildInsertOrIgnore('weeks', 'week_number, year', '?, ?', 'week_number, year')
         )->execute([$weekNumber, $year]);

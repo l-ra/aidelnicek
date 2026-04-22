@@ -873,13 +873,8 @@ $router->post('/admin/llm-generate', function () use ($projectRoot) {
         $weekNum  = (int) $_POST['week_number'];
         $weekYear = (int) $_POST['year'];
         if ($weekNum >= 1 && $weekNum <= 53 && $weekYear >= 2024) {
-            Database::get()->prepare(
-                Database::buildInsertOrIgnore('weeks', 'week_number, year', '?, ?', 'week_number, year')
-            )->execute([$weekNum, $weekYear]);
-            $row = Database::get()->prepare('SELECT id FROM weeks WHERE week_number = ? AND year = ?');
-            $row->execute([$weekNum, $weekYear]);
-            $weekRow = $row->fetch();
-            $weekId  = $weekRow ? (int) $weekRow['id'] : 0;
+            $weekRow = MealPlan::getOrCreateWeekByNumberAndYear($weekNum, $weekYear);
+            $weekId  = (int) ($weekRow['id'] ?? 0);
         }
     }
 
