@@ -195,6 +195,11 @@ final class ApplicationDataExport
         $tablesTouched  = 0;
         $isPostgres     = Database::isPostgres();
 
+        /** @var list<string> $importOrder */
+        $importOrder = $isPostgres
+            ? self::postgresImportTableOrder($db, $expectedTables)
+            : $expectedTables;
+
         if (!$isPostgres) {
             $db->exec('PRAGMA foreign_keys = OFF');
         }
@@ -210,7 +215,7 @@ final class ApplicationDataExport
                 }
             }
 
-            foreach ($expectedTables as $table) {
+            foreach ($importOrder as $table) {
                 $rows = $tablesPayload[$table];
                 if (!is_array($rows)) {
                     throw new \InvalidArgumentException('Tabulka ' . $table . ': očekáno pole řádků.');
@@ -244,6 +249,89 @@ final class ApplicationDataExport
             'tables_imported' => $tablesTouched,
             'rows_imported'   => $rowsImported,
         ];
+    }
+
+    /**
+     * Pořadí tabulek pro INSERT tak, aby byly vždy dříve řádky v referencované tabulce než v odkazující.
+     * Abecední řazení z exportu nestačí (např. generation_job_chunks před generation_jobs).
+     *
+     * @param list<string> $tables
+     * @return list<string>
+     */
+    private static function postgresImportTableOrder(PDO $db, array $tables): array
+    {
+        $inSet = array_fill_keys($tables, true);
+
+        $stmt = $db->query(
+            'SELECT c.relname AS child_table, p.relname AS parent_table
+             FROM pg_constraint x
+             JOIN pg_class c ON c.oid = x.conrelid
+             JOIN pg_class p ON p.oid = x.confrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE x.contype = \'f\'
+               AND n.nspname = current_schema()'
+        );
+        if ($stmt === false) {
+            throw new \RuntimeException('Nelze načíst cizí klíče pro řazení tabulek při importu.');
+        }
+
+        /** @var array<string, list<string>> $successors parent -> referencing children */
+        $successors = [];
+        /** @var array<string, int> $indegree */
+        $indegree = array_fill_keys($tables, 0);
+
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $child  = isset($row['child_table']) ? (string) $row['child_table'] : '';
+            $parent = isset($row['parent_table']) ? (string) $row['parent_table'] : '';
+            if ($child === '' || $parent === '' || $child === $parent) {
+                continue;
+            }
+            if (!isset($inSet[$child], $inSet[$parent])) {
+                continue;
+            }
+            if (!isset($successors[$parent])) {
+                $successors[$parent] = [];
+            }
+            $successors[$parent][] = $child;
+            $indegree[$child]++;
+        }
+
+        foreach ($successors as $p => $children) {
+            $successors[$p] = array_values(array_unique($children));
+            sort($successors[$p], SORT_STRING);
+        }
+
+        $ready = [];
+        foreach ($tables as $t) {
+            if (($indegree[$t] ?? 0) === 0) {
+                $ready[] = $t;
+            }
+        }
+        sort($ready, SORT_STRING);
+
+        $order = [];
+        while ($ready !== []) {
+            $t = array_shift($ready);
+            $order[] = $t;
+            foreach ($successors[$t] ?? [] as $succ) {
+                $indegree[$succ]--;
+                if ($indegree[$succ] === 0) {
+                    $ready[] = $succ;
+                    sort($ready, SORT_STRING);
+                }
+            }
+        }
+
+        if (count($order) !== count($tables)) {
+            $remaining = array_values(array_diff($tables, $order));
+            sort($remaining, SORT_STRING);
+            throw new \RuntimeException(
+                'Cyklus v cizích klíčích mezi tabulkami znemožňuje bezpečné pořadí importu: '
+                . implode(', ', $remaining)
+            );
+        }
+
+        return $order;
     }
 
     /**
