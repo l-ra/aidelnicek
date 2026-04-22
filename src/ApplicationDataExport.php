@@ -196,9 +196,14 @@ final class ApplicationDataExport
         $isPostgres     = Database::isPostgres();
 
         /** @var list<string> $importOrder */
-        $importOrder = $isPostgres
-            ? self::postgresImportTableOrder($db, $expectedTables)
-            : $expectedTables;
+        $pgFkCycle = false;
+        if ($isPostgres) {
+            $orderInfo    = self::postgresImportTableOrder($db, $expectedTables);
+            $importOrder  = $orderInfo['order'];
+            $pgFkCycle    = $orderInfo['cyclic_fk'];
+        } else {
+            $importOrder = $expectedTables;
+        }
 
         if (!$isPostgres) {
             $db->exec('PRAGMA foreign_keys = OFF');
@@ -209,6 +214,11 @@ final class ApplicationDataExport
             if ($isPostgres) {
                 $quoted = array_map(static fn (string $t) => self::quoteIdent($t), $expectedTables);
                 $db->exec('TRUNCATE TABLE ' . implode(', ', $quoted) . ' RESTART IDENTITY CASCADE');
+                if ($pgFkCycle) {
+                    // Cizí klíče jsou v PG implementované triggery; v režimu replica se při INSERTech nevyhodnocují
+                    // (obdoba PRAGMA foreign_keys=OFF u SQLite). Platí jen do konce transakce (SET LOCAL).
+                    $db->exec("SET LOCAL session_replication_role = 'replica'");
+                }
             } else {
                 foreach ($expectedTables as $table) {
                     $db->exec('DELETE FROM ' . self::quoteIdent($table));
@@ -256,7 +266,9 @@ final class ApplicationDataExport
      * Abecední řazení z exportu nestačí (např. generation_job_chunks před generation_jobs).
      *
      * @param list<string> $tables
-     * @return list<string>
+     * @return array{order: list<string>, cyclic_fk: bool}
+     *         Pokud mezi tabulkami existuje cyklus v cizích klíčích, vrátí abecední pořadí a cyclic_fk=true
+     *         (import pak dočasně vypne triggery tabulek, obdobně jako PRAGMA foreign_keys=OFF u SQLite).
      */
     private static function postgresImportTableOrder(PDO $db, array $tables): array
     {
@@ -323,15 +335,13 @@ final class ApplicationDataExport
         }
 
         if (count($order) !== count($tables)) {
-            $remaining = array_values(array_diff($tables, $order));
-            sort($remaining, SORT_STRING);
-            throw new \RuntimeException(
-                'Cyklus v cizích klíčích mezi tabulkami znemožňuje bezpečné pořadí importu: '
-                . implode(', ', $remaining)
-            );
+            $fallback = $tables;
+            sort($fallback, SORT_STRING);
+
+            return ['order' => $fallback, 'cyclic_fk' => true];
         }
 
-        return $order;
+        return ['order' => $order, 'cyclic_fk' => false];
     }
 
     /**
