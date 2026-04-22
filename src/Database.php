@@ -54,6 +54,34 @@ class Database
     }
 
     /**
+     * Synchronizuje sekvenci SERIAL u sloupce id s aktuálním MAX(id) v tabulce.
+     * Potřebné po obnově z dumpu nebo manuálním vložení s nízkými id — jinak INSERT generuje
+     * již existující id a PostgreSQL hlásí duplicate key na *table*_pkey.
+     *
+     * @param non-empty-string $table Bezpečné jméno tabulky (a-z, číslice, podtržítko).
+     */
+    public static function ensurePostgresIdSequenceSynced(string $table): void
+    {
+        if (!self::$usePostgres) {
+            return;
+        }
+        if (!preg_match('/^[a-z_][a-z0-9_]*$/', $table)) {
+            return;
+        }
+        $db  = self::get();
+        $seq = $db->query(
+            "SELECT pg_get_serial_sequence(" . $db->quote($table) . ", 'id') AS s"
+        )->fetchColumn();
+        if (!is_string($seq) || $seq === '') {
+            return;
+        }
+        $stmt = $db->prepare(
+            'SELECT setval(?::regclass, (SELECT COALESCE(MAX(id), 0) FROM ' . $table . '), true)'
+        );
+        $stmt->execute([$seq]);
+    }
+
+    /**
      * PostgreSQL schéma tenanta (search_path). Pouze v PG režimu.
      */
     public static function getPostgresTenantSchema(): string
@@ -454,14 +482,32 @@ class Database
      */
     private static function syncPostgresMigrationsIdSequence(PDO $db): void
     {
+        if (!self::$usePostgres) {
+            return;
+        }
+        // Použijte stejné chování jako u ostatních tabulek: MAX(může být 0 při prázdné tabulce).
+        self::ensurePostgresIdSequenceFromConnection($db, 'migrations');
+    }
+
+    /**
+     * Jako ensurePostgresIdSequenceSynced, ale s již otevřeným PDO (např. uvnitř migrací).
+     */
+    private static function ensurePostgresIdSequenceFromConnection(PDO $db, string $table): void
+    {
+        if (!self::$usePostgres) {
+            return;
+        }
+        if (!preg_match('/^[a-z_][a-z0-9_]*$/', $table)) {
+            return;
+        }
         $seq = $db->query(
-            "SELECT pg_get_serial_sequence('migrations', 'id') AS s"
+            "SELECT pg_get_serial_sequence(" . $db->quote($table) . ", 'id') AS s"
         )->fetchColumn();
         if (!is_string($seq) || $seq === '') {
             return;
         }
         $stmt = $db->prepare(
-            'SELECT setval(?::regclass, COALESCE((SELECT MAX(id) FROM migrations), 1), true)'
+            'SELECT setval(?::regclass, (SELECT COALESCE(MAX(id), 0) FROM ' . $table . '), true)'
         );
         $stmt->execute([$seq]);
     }
