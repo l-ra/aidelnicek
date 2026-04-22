@@ -8,6 +8,18 @@ class MealPlan
 {
     private const MEAL_TYPE_ORDER = ['breakfast', 'snack_am', 'lunch', 'snack_pm', 'dinner'];
 
+    /**
+     * Řazení jmen bez ohledu na velikost písmen. SQLite: COLLATE NOCASE; PostgreSQL nemá NOCASE — LOWER(...).
+     *
+     * @param non-empty-string $nameExpr výraz se jménem, např. "u.name"
+     */
+    private static function sqlOrderUserNameCaseInsensitive(string $nameExpr): string
+    {
+        return Database::isPostgres()
+            ? 'LOWER(' . $nameExpr . ')'
+            : $nameExpr . ' COLLATE NOCASE';
+    }
+
     private const MEAL_TYPE_LABELS = [
         'breakfast' => 'Snídaně',
         'snack_am'  => 'Dopolední svačina',
@@ -615,7 +627,8 @@ class MealPlan
                         )
                     )
                )
-             ORDER BY mp.meal_type ASC, mp.alternative ASC, u.name COLLATE NOCASE ASC'
+             ORDER BY mp.meal_type ASC, mp.alternative ASC, '
+            . self::sqlOrderUserNameCaseInsensitive('u.name') . ' ASC'
         );
         $stmt->execute([$weekId, $dayOfWeek, $currentUserId]);
 
@@ -683,7 +696,7 @@ class MealPlan
                         )
                     )
                )
-             ORDER BY u.name COLLATE NOCASE ASC'
+             ORDER BY ' . self::sqlOrderUserNameCaseInsensitive('u.name') . ' ASC'
         );
         $stmt->execute([$weekId, $dayOfWeek, $mealType]);
         $rows = $stmt->fetchAll();
