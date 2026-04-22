@@ -653,6 +653,37 @@ WHERE canonical_proposal_meal_id IS NULL
   AND proposal_meal_id IS NOT NULL
 PG_S_42,
             ],
+            [
+                'sqlite' => <<<'S_43'
+            UPDATE users SET id = id WHERE 0
+S_43,
+                'pgsql' => <<<'PG_S_43'
+DO $migration$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT c.conname::text AS conname,
+               n.nspname::text AS nsp,
+               rel.relname::text AS tbl
+        FROM pg_constraint c
+        JOIN pg_class rel ON rel.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = rel.relnamespace
+        WHERE c.contype = 'f'
+          AND n.nspname = current_schema()
+          AND NOT c.condeferrable
+    LOOP
+        EXECUTE format(
+            'ALTER TABLE %I.%I ALTER CONSTRAINT %I DEFERRABLE INITIALLY IMMEDIATE',
+            r.nsp,
+            r.tbl,
+            r.conname
+        );
+    END LOOP;
+END
+$migration$
+PG_S_43,
+            ],
         ];
     }
 }

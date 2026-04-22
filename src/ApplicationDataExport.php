@@ -196,11 +196,8 @@ final class ApplicationDataExport
         $isPostgres     = Database::isPostgres();
 
         /** @var list<string> $importOrder */
-        $pgFkCycle = false;
         if ($isPostgres) {
-            $orderInfo    = self::postgresImportTableOrder($db, $expectedTables);
-            $importOrder  = $orderInfo['order'];
-            $pgFkCycle    = $orderInfo['cyclic_fk'];
+            $importOrder = self::postgresImportTableOrder($db, $expectedTables);
         } else {
             $importOrder = $expectedTables;
         }
@@ -214,11 +211,8 @@ final class ApplicationDataExport
             if ($isPostgres) {
                 $quoted = array_map(static fn (string $t) => self::quoteIdent($t), $expectedTables);
                 $db->exec('TRUNCATE TABLE ' . implode(', ', $quoted) . ' RESTART IDENTITY CASCADE');
-                if ($pgFkCycle) {
-                    // Cizí klíče jsou v PG implementované triggery; v režimu replica se při INSERTech nevyhodnocují
-                    // (obdoba PRAGMA foreign_keys=OFF u SQLite). Platí jen do konce transakce (SET LOCAL).
-                    $db->exec("SET LOCAL session_replication_role = 'replica'");
-                }
+                // Odložená kontrola FK do konce transakce (vyžaduje DEFERRABLE migraci u všech FK ve schématu).
+                $db->exec('SET CONSTRAINTS ALL DEFERRED');
             } else {
                 foreach ($expectedTables as $table) {
                     $db->exec('DELETE FROM ' . self::quoteIdent($table));
@@ -264,11 +258,10 @@ final class ApplicationDataExport
     /**
      * Pořadí tabulek pro INSERT tak, aby byly vždy dříve řádky v referencované tabulce než v odkazující.
      * Abecední řazení z exportu nestačí (např. generation_job_chunks před generation_jobs).
+     * Cykly v DAGu řeší odložené FK (SET CONSTRAINTS ALL DEFERRED), sem vracíme stabilní abecední fallback.
      *
      * @param list<string> $tables
-     * @return array{order: list<string>, cyclic_fk: bool}
-     *         Pokud mezi tabulkami existuje cyklus v cizích klíčích, vrátí abecední pořadí a cyclic_fk=true
-     *         (import pak dočasně vypne triggery tabulek, obdobně jako PRAGMA foreign_keys=OFF u SQLite).
+     * @return list<string>
      */
     private static function postgresImportTableOrder(PDO $db, array $tables): array
     {
@@ -338,10 +331,10 @@ final class ApplicationDataExport
             $fallback = $tables;
             sort($fallback, SORT_STRING);
 
-            return ['order' => $fallback, 'cyclic_fk' => true];
+            return $fallback;
         }
 
-        return ['order' => $order, 'cyclic_fk' => false];
+        return $order;
     }
 
     /**
