@@ -441,8 +441,29 @@ class Database
                     throw $e;
                 }
             }
+            if ($isPg) {
+                self::syncPostgresMigrationsIdSequence($db);
+            }
             $db->prepare('INSERT INTO migrations (name) VALUES (?)')->execute([$name]);
         }
+    }
+
+    /**
+     * Po obnově DB z dumpu mohou mít řádky v migrations explicitní id, ale sekvence zůstane nízko
+     * a další INSERT narazí na duplicate key (migrations_pkey).
+     */
+    private static function syncPostgresMigrationsIdSequence(PDO $db): void
+    {
+        $seq = $db->query(
+            "SELECT pg_get_serial_sequence('migrations', 'id') AS s"
+        )->fetchColumn();
+        if (!is_string($seq) || $seq === '') {
+            return;
+        }
+        $stmt = $db->prepare(
+            'SELECT setval(?::regclass, COALESCE((SELECT MAX(id) FROM migrations), 1), true)'
+        );
+        $stmt->execute([$seq]);
     }
 
     private static function isBenignMigrationConflict(\Throwable $e, bool $isPostgres): bool
