@@ -154,7 +154,6 @@ async def open_db(tenant_id: str | None = None) -> Any:
         await conn.execute(f'SET search_path TO "{schema}", public')
         await _ensure_pg_schema(conn)
         await _ensure_pg_llm_partitions(conn, schema)
-        conn._aidelnicek_schema = schema  # type: ignore[attr-defined]
         return conn
 
     if tenant_id is None or tenant_id.strip() == "":
