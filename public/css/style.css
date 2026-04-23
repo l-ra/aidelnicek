@@ -52,14 +52,37 @@ body {
 }
 
 .logo {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--color-white);
+    display: flex;
+    align-items: center;
+    line-height: 0;
     text-decoration: none;
 }
 
-.logo:hover {
-    color: rgba(255, 255, 255, 0.9);
+.logo__img {
+    display: block;
+    height: 2.25rem;
+    width: auto;
+    max-width: min(12.5rem, 55vw);
+    object-fit: contain;
+    object-position: left center;
+}
+
+.logo:hover .logo__img {
+    opacity: 0.92;
+}
+
+.landing-title {
+    margin: 0 0 1rem;
+    line-height: 0;
+}
+
+.landing-title__img {
+    display: block;
+    height: 3rem;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: left center;
 }
 
 .main-nav {
