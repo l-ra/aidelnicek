@@ -7,12 +7,25 @@ declare(strict_types=1);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aidelnicek — výběr domácnosti</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/img/brand/ajidelnicek-transp-logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="/img/brand/ajidelnicek-transp-logo.png">
+    <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
     <main class="site-main">
         <div class="container" style="max-width: 32rem; margin: 3rem auto;">
-            <h1>Aidelnicek</h1>
+            <h1 class="landing-title">
+                <img
+                    class="landing-title__img"
+                    src="/img/brand/ajidelnicek-transp.png"
+                    alt="Aidelnicek"
+                    width="1867"
+                    height="439"
+                    decoding="async"
+                >
+            </h1>
             <p id="landing-status" class="text-muted">Přesměrovávám…</p>
             <p id="landing-manual" hidden>
                 <label for="tenant-input">Zadejte identifikátor domácnosti (např. <code>dplusk</code>):</label><br>

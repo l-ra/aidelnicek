@@ -12,6 +12,10 @@ $u = static fn (string $path): string => htmlspecialchars(\Aidelnicek\Url::u($pa
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?> — Aidelnicek</title>
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" href="/img/brand/ajidelnicek-transp-logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="/img/brand/ajidelnicek-transp-logo.png">
+    <link rel="manifest" href="/manifest.json">
     <link rel="stylesheet" href="/css/style.css">
     <?php if (!$sharedPage): ?>
     <meta name="csrf-token" content="<?= htmlspecialchars(\Aidelnicek\Csrf::generate()) ?>">
@@ -28,7 +32,16 @@ echo htmlspecialchars($__ts !== null && $__ts !== '' ? '/' . $__ts : '');
     <?php endif; ?>
     <header class="site-header">
         <div class="container">
-            <a href="<?= $u('/') ?>" class="logo">Aidelnicek</a>
+            <a href="<?= $u('/') ?>" class="logo" aria-label="Aidelnicek — domů">
+                <img
+                    class="logo__img"
+                    src="/img/brand/ajidelnicek-transp.png"
+                    alt="Aidelnicek"
+                    width="1867"
+                    height="439"
+                    decoding="async"
+                >
+            </a>
             <?php if ($sharedPage): ?>
             <div class="shared-page-badge">Veřejné sdílení</div>
             <?php else: ?>
