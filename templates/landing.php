@@ -28,7 +28,7 @@ declare(strict_types=1);
             </h1>
             <p id="landing-status" class="text-muted">Přesměrovávám…</p>
             <p id="landing-manual" hidden>
-                <label for="tenant-input">Zadejte identifikátor domácnosti (např. <code>dplusk</code>):</label><br>
+                <label for="tenant-input">Zadejte identifikátor domácnosti:</label><br>
                 <input type="text" id="tenant-input" autocomplete="off" style="margin-top: 0.5rem; width: 100%; max-width: 20rem;">
                 <button type="button" id="tenant-go" class="btn btn-primary" style="margin-top: 0.75rem;">Pokračovat</button>
             </p>
