@@ -96,6 +96,30 @@ def _iter_month_starts(utc_now: datetime, count: int) -> Iterator[datetime]:
             y += 1
 
 
+async def _sync_pg_serial_sequences(conn: asyncpg.Connection) -> None:
+    """Align SERIAL sequences with current MAX(id) after restores or manual inserts.
+
+    Without this, PostgreSQL can emit the next sequence value (e.g. 2) while that
+    primary key already exists, causing UniqueViolationError on INSERT.
+    """
+    for table in ("generation_jobs", "generation_job_chunks"):
+        seq = await conn.fetchval(
+            "SELECT pg_get_serial_sequence($1, 'id')",
+            table,
+        )
+        if not seq:
+            continue
+        max_id = await conn.fetchval(f"SELECT COALESCE(MAX(id), 0) FROM {table}")
+        if not max_id:
+            await conn.execute("SELECT setval($1::regclass, 1, false)", seq)
+        else:
+            await conn.execute(
+                "SELECT setval($1::regclass, $2::bigint, true)",
+                seq,
+                int(max_id),
+            )
+
+
 async def _ensure_pg_llm_partitions(conn: asyncpg.Connection, schema: str) -> None:
     """Create monthly partitions for llm_log if parent exists."""
     row = await conn.fetchrow(
@@ -153,6 +177,7 @@ async def open_db(tenant_id: str | None = None) -> Any:
         await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
         await conn.execute(f'SET search_path TO "{schema}", public')
         await _ensure_pg_schema(conn)
+        await _sync_pg_serial_sequences(conn)
         await _ensure_pg_llm_partitions(conn, schema)
         return conn
 
