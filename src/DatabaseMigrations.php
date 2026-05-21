@@ -691,29 +691,24 @@ S_44,
                 'pgsql' => <<<'PG_S_44'
 DO $migration$
 DECLARE
+    t text;
     seq text;
 BEGIN
-    seq := pg_get_serial_sequence('llm_meal_proposals', 'id');
-    IF seq IS NOT NULL THEN
-        EXECUTE format(
-            'SELECT setval(%L::regclass, COALESCE((SELECT MAX(id) FROM llm_meal_proposals), 0), true)',
-            seq
-        );
-    END IF;
-    seq := pg_get_serial_sequence('llm_proposal_meals', 'id');
-    IF seq IS NOT NULL THEN
-        EXECUTE format(
-            'SELECT setval(%L::regclass, COALESCE((SELECT MAX(id) FROM llm_proposal_meals), 0), true)',
-            seq
-        );
-    END IF;
-    seq := pg_get_serial_sequence('meal_recipes', 'id');
-    IF seq IS NOT NULL THEN
-        EXECUTE format(
-            'SELECT setval(%L::regclass, COALESCE((SELECT MAX(id) FROM meal_recipes), 0), true)',
-            seq
-        );
-    END IF;
+    FOREACH t IN ARRAY ARRAY[
+        'migrations', 'users', 'weeks', 'meal_plans', 'shopping_list_items',
+        'meal_history', 'notifications_log', 'remember_tokens', 'generation_jobs',
+        'llm_meal_proposals', 'llm_proposal_meals', 'meal_recipes',
+        'generation_job_chunks', 'email_change_requests', 'llm_log'
+    ]
+    LOOP
+        seq := pg_get_serial_sequence(t, 'id');
+        IF seq IS NOT NULL THEN
+            EXECUTE format(
+                'SELECT setval(%L::regclass, COALESCE((SELECT MAX(id) FROM %I), 0), true)',
+                seq, t
+            );
+        END IF;
+    END LOOP;
 END
 $migration$
 PG_S_44,
