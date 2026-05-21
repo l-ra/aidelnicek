@@ -418,6 +418,7 @@ class MealRecipe
         string $model,
         string $recipeText
     ): void {
+        Database::ensurePostgresIdSequenceSynced('meal_recipes');
         Database::get()->prepare(
             'INSERT INTO meal_recipes (proposal_meal_id, generated_by_user_id, model, recipe_text, created_at, updated_at)
              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)

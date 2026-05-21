@@ -157,6 +157,8 @@ class GenerationJobProjector
         }
 
         $db = Database::get();
+        Database::ensurePostgresIdSequenceSynced('llm_meal_proposals');
+        Database::ensurePostgresIdSequenceSynced('llm_proposal_meals');
         $db->beginTransaction();
         try {
             $proposalStmt = $db->prepare(

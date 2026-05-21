@@ -246,6 +246,8 @@ final class ApplicationDataExport
 
         if (!$isPostgres) {
             $db->exec('PRAGMA foreign_keys = ON');
+        } else {
+            Database::ensureAllPostgresIdSequencesSynced();
         }
 
         return [

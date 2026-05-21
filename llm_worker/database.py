@@ -96,13 +96,32 @@ def _iter_month_starts(utc_now: datetime, count: int) -> Iterator[datetime]:
             y += 1
 
 
+_PG_SERIAL_ID_TABLES = (
+    "migrations",
+    "users",
+    "weeks",
+    "meal_plans",
+    "shopping_list_items",
+    "meal_history",
+    "notifications_log",
+    "remember_tokens",
+    "generation_jobs",
+    "llm_meal_proposals",
+    "llm_proposal_meals",
+    "meal_recipes",
+    "generation_job_chunks",
+    "email_change_requests",
+    "llm_log",
+)
+
+
 async def _sync_pg_serial_sequences(conn: asyncpg.Connection) -> None:
     """Align SERIAL sequences with current MAX(id) after restores or manual inserts.
 
     Without this, PostgreSQL can emit the next sequence value (e.g. 2) while that
     primary key already exists, causing UniqueViolationError on INSERT.
     """
-    for table in ("generation_jobs", "generation_job_chunks"):
+    for table in _PG_SERIAL_ID_TABLES:
         seq = await conn.fetchval(
             "SELECT pg_get_serial_sequence($1, 'id')",
             table,

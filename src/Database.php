@@ -65,20 +65,22 @@ class Database
         if (!self::$usePostgres) {
             return;
         }
-        if (!preg_match('/^[a-z_][a-z0-9_]*$/', $table)) {
+        $db = self::$connection ?? self::get();
+        self::ensurePostgresIdSequenceFromConnection($db, $table);
+    }
+
+    /**
+     * Zarovná sekvence u všech tabulek s automatickým id (viz POSTGRES_SERIAL_ID_TABLES).
+     */
+    public static function ensureAllPostgresIdSequencesSynced(): void
+    {
+        if (!self::$usePostgres) {
             return;
         }
-        $db  = self::get();
-        $seq = $db->query(
-            "SELECT pg_get_serial_sequence(" . $db->quote($table) . ", 'id') AS s"
-        )->fetchColumn();
-        if (!is_string($seq) || $seq === '') {
-            return;
+        $db = self::$connection ?? self::get();
+        foreach (self::POSTGRES_SERIAL_ID_TABLES as $table) {
+            self::ensurePostgresIdSequenceFromConnection($db, $table);
         }
-        $stmt = $db->prepare(
-            'SELECT setval(?::regclass, (SELECT COALESCE(MAX(id), 0) FROM ' . $table . '), true)'
-        );
-        $stmt->execute([$seq]);
     }
 
     /**
