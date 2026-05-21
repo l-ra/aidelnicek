@@ -684,6 +684,40 @@ END
 $migration$
 PG_S_43,
             ],
+            [
+                'sqlite' => <<<'S_44'
+            UPDATE llm_meal_proposals SET week_id = week_id WHERE 0
+S_44,
+                'pgsql' => <<<'PG_S_44'
+DO $migration$
+DECLARE
+    seq text;
+BEGIN
+    seq := pg_get_serial_sequence('llm_meal_proposals', 'id');
+    IF seq IS NOT NULL THEN
+        EXECUTE format(
+            'SELECT setval(%L::regclass, COALESCE((SELECT MAX(id) FROM llm_meal_proposals), 0), true)',
+            seq
+        );
+    END IF;
+    seq := pg_get_serial_sequence('llm_proposal_meals', 'id');
+    IF seq IS NOT NULL THEN
+        EXECUTE format(
+            'SELECT setval(%L::regclass, COALESCE((SELECT MAX(id) FROM llm_proposal_meals), 0), true)',
+            seq
+        );
+    END IF;
+    seq := pg_get_serial_sequence('meal_recipes', 'id');
+    IF seq IS NOT NULL THEN
+        EXECUTE format(
+            'SELECT setval(%L::regclass, COALESCE((SELECT MAX(id) FROM meal_recipes), 0), true)',
+            seq
+        );
+    END IF;
+END
+$migration$
+PG_S_44,
+            ],
         ];
     }
 }
