@@ -35,12 +35,22 @@ class MealHistory
             return;
         }
 
+        if (Database::isPostgres()) {
+            // PostgreSQL: nequalifikovaný sloupec v ON CONFLICT DO UPDATE je nejednoznačný
+            // (existující řádek vs. EXCLUDED). meal_history = řádek v tabulce, EXCLUDED = hodnoty z INSERT.
+            $incrementExpr = "meal_history.{$column} + EXCLUDED.{$column}";
+            $lastOfferedElse = 'meal_history.last_offered';
+        } else {
+            $incrementExpr = "{$column} + 1";
+            $lastOfferedElse = 'last_offered';
+        }
+
         Database::get()->prepare(
             "INSERT INTO meal_history (user_id, meal_name, {$column}, last_offered)
              VALUES (?, ?, 1, CURRENT_TIMESTAMP)
              ON CONFLICT(user_id, meal_name) DO UPDATE SET
-                {$column} = meal_history.{$column} + 1,
-                last_offered = CASE WHEN '{$column}' = 'times_offered' THEN CURRENT_TIMESTAMP ELSE meal_history.last_offered END"
+                {$column} = {$incrementExpr},
+                last_offered = CASE WHEN '{$column}' = 'times_offered' THEN CURRENT_TIMESTAMP ELSE {$lastOfferedElse} END"
         )->execute([$userId, $mealName]);
     }
 }
