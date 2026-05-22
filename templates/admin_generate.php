@@ -155,6 +155,17 @@ ob_start();
                         Zobrazit vygenerovaný jídelníček →
                     </a>
                 </div>
+                <div id="gen-projection-retry" hidden style="margin-top:1rem">
+                    <p class="form-help" style="margin-bottom:0.5rem">
+                        LLM odpověď je uložená, ale zápis do databáze selhal. Můžete projekci spustit znovu.
+                    </p>
+                    <button type="button" id="gen-retry-projection-btn" class="btn btn-secondary btn-sm">
+                        Zkusit projekci znovu
+                    </button>
+                    <a id="gen-projection-jobs-link" href="<?= Url::hu('/admin/llm-jobs') ?>" class="btn btn-secondary btn-sm" style="margin-left:0.5rem">
+                        Otevřít správu jobů
+                    </a>
+                </div>
             </div>
         </div>
 
@@ -219,6 +230,9 @@ ob_start();
     var copyBtn      = document.getElementById('gen-copy-btn');
     var doneActions  = document.getElementById('gen-done-actions');
     var planLink     = document.getElementById('gen-plan-link');
+    var projectionRetry = document.getElementById('gen-projection-retry');
+    var retryProjBtn = document.getElementById('gen-retry-projection-btn');
+    var projectionJobsLink = document.getElementById('gen-projection-jobs-link');
 
     var infoJobId    = document.getElementById('info-job-id');
     var infoStatus   = document.getElementById('info-status');
@@ -304,6 +318,7 @@ ob_start();
         outputEl.textContent = '';
         outputWrap.hidden    = true;
         doneActions.hidden   = true;
+        projectionRetry.hidden = true;
         jobInfoCard.hidden   = false;
         infoJobId.textContent   = '…';
         infoStatus.textContent  = 'pending';
@@ -381,6 +396,14 @@ ob_start();
                     } else {
                         infoStatus.textContent = '✗ chyba';
                         setStatus('Chyba: ' + (msg.error || 'neznámá chyba'), 'error');
+                        var jid = parseInt(infoJobId.textContent, 10);
+                        if (jid > 0 && msg.projection_failed) {
+                            projectionJobsLink.href = <?= json_encode(Url::u('/admin/llm-jobs'), JSON_UNESCAPED_SLASHES) ?> + '?job_id=' + jid;
+                            projectionRetry.hidden = false;
+                            retryProjBtn.onclick = function () {
+                                retryProjectionInline(jid);
+                            };
+                        }
                     }
                 }
 
@@ -420,6 +443,39 @@ ob_start();
             navigator.clipboard.writeText(outputEl.textContent);
         }
     });
+
+    function retryProjectionInline(jobId) {
+        retryProjBtn.disabled = true;
+        setStatus('Spouštím projekci do databáze…', '');
+
+        var fd = new FormData();
+        fd.append('csrf_token', csrfToken);
+        fd.append('job_id', String(jobId));
+        fd.append('cleanup', '1');
+
+        fetch(<?= json_encode(Url::u('/admin/llm-jobs/retry-projection'), JSON_UNESCAPED_SLASHES) ?>, {
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            body: fd,
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            retryProjBtn.disabled = false;
+            if (data.ok) {
+                setStatus('Projekce dokončena.', 'ok');
+                infoStatus.textContent = '✓ hotovo';
+                projectionRetry.hidden = true;
+                planLink.href = <?= json_encode(Url::u('/plan/week'), JSON_UNESCAPED_SLASHES) ?> + '?week=' + weekInput.value + '&year=' + yearInput.value;
+                doneActions.hidden = false;
+            } else {
+                setStatus('Projekce selhala: ' + (data.error || 'neznámá chyba'), 'error');
+            }
+        })
+        .catch(function (err) {
+            retryProjBtn.disabled = false;
+            setStatus('Chyba spojení: ' + err.message, 'error');
+        });
+    }
 }());
 </script>
 <?php

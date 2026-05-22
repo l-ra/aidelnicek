@@ -1011,8 +1011,15 @@ $router->get('/admin/llm-stream', function () {
             $errorText = $doneStatus === 'error'
                 ? ((string) ($job['projection_error_message'] ?: $job['error_message'] ?: 'Neznámá chyba'))
                 : null;
+            $projectionFailed = $job['status'] === 'done' && $job['projection_status'] === 'error';
             echo "data: " . json_encode(
-                ['type' => 'done', 'status' => $doneStatus, 'error' => $errorText],
+                [
+                    'type'               => 'done',
+                    'status'             => $doneStatus,
+                    'error'              => $errorText,
+                    'projection_failed'  => $projectionFailed,
+                    'projection_status'  => (string) ($job['projection_status'] ?? ''),
+                ],
                 JSON_UNESCAPED_UNICODE
             ) . "\n\n";
             flush();
@@ -1029,6 +1036,91 @@ $router->get('/admin/llm-stream', function () {
         usleep(400_000);
     }
 
+    exit;
+});
+
+$router->get('/admin/llm-jobs', function () use ($projectRoot) {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        header('Location: ' . Url::u('/'));
+        exit;
+    }
+    require $projectRoot . '/templates/admin_llm_jobs.php';
+});
+
+$router->get('/admin/llm-jobs/data', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Přístup odepřen.']);
+        exit;
+    }
+
+    header('Content-Type: application/json');
+
+    $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 50;
+    $projectionFilter = isset($_GET['projection_status']) ? trim((string) $_GET['projection_status']) : null;
+    if ($projectionFilter === 'all' || $projectionFilter === '') {
+        $projectionFilter = null;
+    }
+
+    $allowedFilters = ['pending', 'processing', 'error', 'done'];
+    if ($projectionFilter !== null && !in_array($projectionFilter, $allowedFilters, true)) {
+        echo json_encode(['ok' => false, 'error' => 'Neplatný filtr projekce.']);
+        exit;
+    }
+
+    try {
+        $jobs = \Aidelnicek\GenerationJobProjector::listJobsForAdmin($limit, $projectionFilter);
+        echo json_encode(['ok' => true, 'jobs' => $jobs], JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    exit;
+});
+
+$router->post('/admin/llm-jobs/retry-projection', function () {
+    $user = Auth::requireLogin();
+    if (!User::isAdmin((int) $user['id'])) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Přístup odepřen.']);
+        exit;
+    }
+
+    $token = $_POST['csrf_token'] ?? '';
+    if (!Csrf::validate($token)) {
+        http_response_code(403);
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'Neplatný CSRF token.']);
+        exit;
+    }
+
+    header('Content-Type: application/json');
+
+    $jobId = isset($_POST['job_id']) ? (int) $_POST['job_id'] : 0;
+    if ($jobId <= 0) {
+        echo json_encode(['ok' => false, 'error' => 'Chybí platné job_id.']);
+        exit;
+    }
+
+    $cleanup = !isset($_POST['cleanup']) || $_POST['cleanup'] !== '0';
+
+    try {
+        $result = \Aidelnicek\GenerationJobProjector::retryProjection($jobId, $cleanup);
+        echo json_encode(
+            [
+                'ok'                => $result['ok'],
+                'error'             => $result['error'],
+                'projection_status' => $result['projection_status'],
+                'job_id'            => $jobId,
+            ],
+            JSON_UNESCAPED_UNICODE
+        );
+    } catch (\Throwable $e) {
+        echo json_encode(['ok' => false, 'error' => $e->getMessage(), 'job_id' => $jobId]);
+    }
     exit;
 });
 
