@@ -487,7 +487,7 @@ class Database
         if (!self::$usePostgres) {
             return;
         }
-        // Použijte stejné chování jako u ostatních tabulek: MAX(může být 0 při prázdné tabulce).
+        // Po dumpu musí být sekvence ≥ MAX(id); prázdná tabulka → setval(1, false), ne 0 (mimo rozsah sekvence).
         self::ensurePostgresIdSequenceFromConnection($db, 'migrations');
     }
 
@@ -508,8 +508,10 @@ class Database
         if (!is_string($seq) || $seq === '') {
             return;
         }
+        // setval(..., 0, ...) je mimo rozsah sekvence; u prázdné tabulky MAX(id) je NULL → použít 1 a is_called=false (jako llm_worker/database.py).
         $stmt = $db->prepare(
-            'SELECT setval(?::regclass, (SELECT COALESCE(MAX(id), 0) FROM ' . $table . '), true)'
+            'WITH m AS (SELECT MAX(id) AS mx FROM ' . $table . ')
+             SELECT setval(?::regclass, COALESCE(NULLIF(m.mx, 0), 1), m.mx IS NOT NULL AND m.mx <> 0)'
         );
         $stmt->execute([$seq]);
     }
