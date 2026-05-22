@@ -54,6 +54,153 @@ class GenerationJobProjector
         return $stmt->rowCount();
     }
 
+    /**
+     * @return array{ok:bool, error:?string, projection_status:?string}
+     */
+    public static function retryProjection(int $jobId, bool $cleanupExisting = true): array
+    {
+        $validationError = self::validateRetryProjection($jobId);
+        if ($validationError !== null) {
+            return ['ok' => false, 'error' => $validationError, 'projection_status' => null];
+        }
+
+        $job = GenerationJobService::getJob($jobId);
+        if ($job === null) {
+            return ['ok' => false, 'error' => 'Job nenalezen.', 'projection_status' => null];
+        }
+
+        $projectionStatus = (string) ($job['projection_status'] ?? '');
+        if ($projectionStatus === 'done') {
+            return ['ok' => true, 'error' => null, 'projection_status' => 'done'];
+        }
+
+        if (in_array($projectionStatus, ['error', 'processing'], true)) {
+            if (!self::resetProjectionForRetry($jobId, $cleanupExisting)) {
+                return [
+                    'ok' => false,
+                    'error' => 'Nepodařilo se resetovat stav projekce.',
+                    'projection_status' => $projectionStatus,
+                ];
+            }
+        } elseif ($projectionStatus === 'pending' && $cleanupExisting) {
+            self::cleanupProjectionArtifacts($jobId);
+        }
+
+        $ok = self::projectJob($jobId);
+        $job = GenerationJobService::getJob($jobId);
+        $finalStatus = $job !== null ? (string) ($job['projection_status'] ?? '') : null;
+
+        if ($ok) {
+            return ['ok' => true, 'error' => null, 'projection_status' => $finalStatus];
+        }
+
+        return [
+            'ok' => false,
+            'error' => $job !== null
+                ? (string) ($job['projection_error_message'] ?? 'Projekce selhala.')
+                : 'Projekce selhala.',
+            'projection_status' => $finalStatus,
+        ];
+    }
+
+    public static function resetProjectionForRetry(int $jobId, bool $cleanupExisting = true): bool
+    {
+        if (self::validateRetryProjection($jobId) !== null) {
+            return false;
+        }
+
+        if ($cleanupExisting) {
+            self::cleanupProjectionArtifacts($jobId);
+        }
+
+        $stmt = Database::get()->prepare(
+            "UPDATE generation_jobs
+             SET projection_status = 'pending',
+                 projection_error_message = NULL,
+                 projection_started_at = NULL,
+                 projection_finished_at = NULL
+             WHERE id = ?
+               AND status = 'done'
+               AND job_type = 'mealplan_generate'
+               AND projection_status IN ('error', 'processing')"
+        );
+        $stmt->execute([$jobId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public static function cleanupProjectionArtifacts(int $jobId): void
+    {
+        Database::get()->prepare(
+            'DELETE FROM llm_meal_proposals WHERE generation_job_id = ?'
+        )->execute([$jobId]);
+    }
+
+    public static function validateRetryProjection(int $jobId): ?string
+    {
+        $job = GenerationJobService::getJob($jobId);
+        if ($job === null) {
+            return 'Job nenalezen.';
+        }
+
+        if ((string) ($job['status'] ?? '') !== 'done') {
+            return 'Projekci lze spustit jen u jobu ve stavu hotovo (LLM dokončeno).';
+        }
+
+        if ((string) ($job['job_type'] ?? '') !== 'mealplan_generate') {
+            return 'Tento typ jobu se neprojektuje do jídelníčku.';
+        }
+
+        if (GenerationJobService::getOutput($jobId) === null) {
+            return 'Job nemá uložený výstup LLM.';
+        }
+
+        $projectionStatus = (string) ($job['projection_status'] ?? '');
+        if (!in_array($projectionStatus, ['pending', 'processing', 'error'], true)) {
+            if ($projectionStatus === 'done') {
+                return 'Projekce je již dokončena.';
+            }
+
+            return 'Neplatný stav projekce.';
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    public static function listJobsForAdmin(int $limit = 50, ?string $projectionFilter = null): array
+    {
+        $limit = max(1, min(200, $limit));
+        $sql = 'SELECT gj.id, gj.user_id, gj.week_id, gj.job_type, gj.status,
+                       gj.error_message, gj.projection_status, gj.projection_error_message,
+                       gj.created_at, gj.finished_at, gj.projection_finished_at,
+                       u.name AS user_name, w.week_number, w.year
+                FROM generation_jobs gj
+                LEFT JOIN users u ON u.id = gj.user_id
+                LEFT JOIN weeks w ON w.id = gj.week_id
+                WHERE gj.job_type = ?';
+        $params = ['mealplan_generate'];
+
+        if ($projectionFilter !== null && $projectionFilter !== '') {
+            $sql .= ' AND gj.projection_status = ?';
+            $params[] = $projectionFilter;
+        }
+
+        $sql .= ' ORDER BY gj.id DESC LIMIT ?';
+        $params[] = $limit;
+
+        $stmt = Database::get()->prepare($sql);
+        foreach ($params as $i => $param) {
+            $type = ($i === count($params) - 1) ? PDO::PARAM_INT : PDO::PARAM_STR;
+            $stmt->bindValue($i + 1, $param, $type);
+        }
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
     public static function projectJob(int $jobId): bool
     {
         if (!self::claimForProjection($jobId)) {

@@ -166,6 +166,15 @@ ob_start();
         </div>
 
         <div class="admin-card">
+            <h2>LLM joby — projekce do DB</h2>
+            <p>
+                Ručně dokončete zápis jídelníčku do databáze u jobů, kde LLM skončilo, ale projekce selhala,
+                uvízla nebo nebyla dokončena.
+            </p>
+            <a href="<?= Url::hu('/admin/llm-jobs') ?>" class="btn btn-primary">Správa projekce jobů</a>
+        </div>
+
+        <div class="admin-card">
             <h2>Test LLM</h2>
             <p>Odešlete vlastní prompt na nakonfigurovaný jazykový model a zobrazte vygenerovanou odpověď.</p>
             <a href="<?= Url::hu('/admin/llm-test') ?>" class="btn btn-primary">Otevřít test</a>
