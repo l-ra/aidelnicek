@@ -510,8 +510,8 @@ class Database
         }
         // setval(..., 0, ...) je mimo rozsah sekvence; u prázdné tabulky MAX(id) je NULL → použít 1 a is_called=false (jako llm_worker/database.py).
         $stmt = $db->prepare(
-            'WITH m AS (SELECT MAX(id) AS mx FROM ' . $table . ')
-             SELECT setval(?::regclass, COALESCE(NULLIF(m.mx, 0), 1), m.mx IS NOT NULL AND m.mx <> 0)'
+            'SELECT setval(?::regclass, COALESCE(NULLIF(s.mx, 0), 1), s.mx IS NOT NULL AND s.mx <> 0) '
+            . 'FROM (SELECT MAX(id) AS mx FROM ' . $table . ') s'
         );
         $stmt->execute([$seq]);
     }

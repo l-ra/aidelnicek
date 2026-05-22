@@ -704,10 +704,10 @@ BEGIN
         seq := pg_get_serial_sequence(t, 'id');
         IF seq IS NOT NULL THEN
             EXECUTE format(
-                'WITH m AS (SELECT MAX(id) AS mx FROM %I)
-                 SELECT setval(%L::regclass, COALESCE(NULLIF(m.mx, 0), 1), m.mx IS NOT NULL AND m.mx <> 0)',
-                t,
-                seq
+                'SELECT setval(%L::regclass, COALESCE(NULLIF(s.mx, 0), 1), s.mx IS NOT NULL AND s.mx <> 0)
+                 FROM (SELECT MAX(id) AS mx FROM %I) s',
+                seq,
+                t
             );
         END IF;
     END LOOP;
