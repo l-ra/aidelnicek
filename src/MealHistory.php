@@ -39,8 +39,8 @@ class MealHistory
             "INSERT INTO meal_history (user_id, meal_name, {$column}, last_offered)
              VALUES (?, ?, 1, CURRENT_TIMESTAMP)
              ON CONFLICT(user_id, meal_name) DO UPDATE SET
-                {$column} = {$column} + 1,
-                last_offered = CASE WHEN '{$column}' = 'times_offered' THEN CURRENT_TIMESTAMP ELSE last_offered END"
+                {$column} = meal_history.{$column} + 1,
+                last_offered = CASE WHEN '{$column}' = 'times_offered' THEN CURRENT_TIMESTAMP ELSE meal_history.last_offered END"
         )->execute([$userId, $mealName]);
     }
 }
